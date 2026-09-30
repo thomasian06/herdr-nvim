@@ -388,9 +388,19 @@ function M.prune()
     for terminal_id, buf in pairs(M.buffers) do
         if not vim.api.nvim_buf_is_valid(buf) then
             M.buffers[terminal_id] = nil
-        elseif not is_live(buf) and not state.pane(vim.b[buf].herdr_pane_id or "") then
-            M.buffers[terminal_id] = nil
-            M.remove_buffer(buf)
+        else
+            local pane = state.pane(vim.b[buf].herdr_pane_id or "")
+            if not pane and not is_live(buf) then
+                M.buffers[terminal_id] = nil
+                M.remove_buffer(buf)
+            elseif pane then
+                -- Keep the buffer name in sync with renames (and with new panes
+                -- whose tab label was not known yet when they were opened).
+                local name = buf_name(pane)
+                if vim.api.nvim_buf_get_name(buf) ~= name then
+                    pcall(vim.api.nvim_buf_set_name, buf, name)
+                end
+            end
         end
     end
 end

@@ -368,7 +368,7 @@ local function open_created(result)
 end
 
 function actions.add_space()
-    vim.ui.input({ prompt = "New space name (empty for default): " }, function(name)
+    require("herdr.ui").input({ prompt = "New space name (empty for default): " }, function(name)
         if name == nil then
             return
         end
@@ -388,7 +388,7 @@ function actions.add()
     end
     local ws = state.workspace(node.workspace_id)
     local ws_name = ws and ws.label or node.workspace_id
-    vim.ui.input({ prompt = "New terminal in " .. ws_name .. " (name, optional): " }, function(name)
+    require("herdr.ui").input({ prompt = "New terminal in " .. ws_name .. " (name, optional): " }, function(name)
         if name == nil then
             return
         end
@@ -422,7 +422,7 @@ function actions.rename()
     if not kind then
         return
     end
-    vim.ui.input({ prompt = "Rename: ", default = node.name }, function(name)
+    require("herdr.ui").input({ prompt = "Rename: ", default = node.name }, function(name)
         if name == nil or vim.trim(name) == "" then
             return
         end

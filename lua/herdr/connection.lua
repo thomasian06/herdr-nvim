@@ -212,11 +212,11 @@ end
 local SOURCE_TAG = { current = "", ["local"] = "", config = "config", saved = "saved", herdr = "herdr machine" }
 
 local function prompt_new(cb)
-    vim.ui.input({ prompt = "SSH target (empty for local): " }, function(target)
+    require("herdr.ui").input({ prompt = "SSH target (empty for local): " }, function(target)
         if target == nil then
             return
         end
-        vim.ui.input({ prompt = "Herdr session: ", default = "main" }, function(session)
+        require("herdr.ui").input({ prompt = "Herdr session: ", default = "main" }, function(session)
             if session == nil then
                 return
             end
@@ -226,13 +226,16 @@ local function prompt_new(cb)
 end
 
 local function offer_save(c)
-    vim.ui.input({ prompt = "Save as profile (name, empty to skip): ", default = c.remote or "local" }, function(name)
-        if name and vim.trim(name) ~= "" then
-            M.save(vim.trim(name), c)
-            M._current_name = vim.trim(name)
-            vim.notify("herdr: saved profile '" .. vim.trim(name) .. "'")
+    require("herdr.ui").input(
+        { prompt = "Save as profile (name, empty to skip): ", default = c.remote or "local" },
+        function(name)
+            if name and vim.trim(name) ~= "" then
+                M.save(vim.trim(name), c)
+                M._current_name = vim.trim(name)
+                vim.notify("herdr: saved profile '" .. vim.trim(name) .. "'")
+            end
         end
-    end)
+    )
 end
 
 --- `:Herdr connect` with no argument: pick a known connection or add one.
