@@ -169,6 +169,9 @@ Run `:checkhealth herdr` to check the current connection.
 - In a herdr terminal, double-tap <Esc> for normal mode (a single <Esc>
   reaches the agent). Entering a herdr terminal window enters terminal mode.
   Each terminal window's winbar shows status, agent, name and space.
+- <C-h/j/k/l> navigate windows from terminal mode (through vim-tmux-navigator
+  or smart-splits.nvim when installed, so edges reach tmux panes). Set
+  `terminal.navigation = false` if an agent needs those keys.
 
 ==============================================================================
 9. EVENTS                                                      *herdr-events*

@@ -251,9 +251,28 @@ local function choose_attach(cb)
     end, { HERDR_SOCKET_PATH = run_dir .. "/herdr.sock" })
 end
 
+--- Clean up after Neovim instances that died without shutting down (crash,
+--- kill -9): stop their orphaned SSH masters and remove their run dirs.
+local function sweep_stale_run_dirs()
+    local uid = vim.uv.os_get_passwd().uid
+    for _, dir in ipairs(vim.fn.glob("/tmp/herdr-nvim-" .. uid .. "-*", false, true)) do
+        local pid = tonumber(dir:match("%-(%d+)$"))
+        local alive = pid and (pid == vim.uv.os_getpid() or vim.uv.kill(pid, 0) == 0)
+        if pid and not alive then
+            if vim.uv.fs_stat(dir .. "/ctl") then
+                pcall(function()
+                    vim.system({ "ssh", "-S", dir .. "/ctl", "-O", "exit", "herdr-nvim-stale" }):wait(2000)
+                end)
+            end
+            vim.fn.delete(dir, "rf")
+        end
+    end
+end
+
 local function start_remote()
     local host = opts().remote
     local gen = generation
+    sweep_stale_run_dirs()
     -- Short path: unix socket paths are limited to ~104 bytes on macOS.
     run_dir = string.format("/tmp/herdr-nvim-%s-%d", vim.uv.os_get_passwd().uid, vim.uv.os_getpid())
     vim.fn.mkdir(run_dir, "p", tonumber("700", 8))

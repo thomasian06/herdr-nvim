@@ -113,7 +113,35 @@ local cached_style ---@type table? resolved once; winbar() runs on every redraw
 
 --- Buffer-local terminal keys: double <Esc> leaves terminal mode (a single
 --- <Esc> is still sent to the agent immediately), like snacks.nvim terminals.
+local NAV = {
+    left = { wincmd = "h", tmux = "TmuxNavigateLeft", smart = "move_cursor_left" },
+    down = { wincmd = "j", tmux = "TmuxNavigateDown", smart = "move_cursor_down" },
+    up = { wincmd = "k", tmux = "TmuxNavigateUp", smart = "move_cursor_up" },
+    right = { wincmd = "l", tmux = "TmuxNavigateRight", smart = "move_cursor_right" },
+}
+
+--- Move to the neighboring window, through whatever navigator the user has:
+--- vim-tmux-navigator, smart-splits.nvim, or plain window commands.
+function M.navigate(dir)
+    local n = NAV[dir]
+    if vim.fn.exists(":" .. n.tmux) == 2 then
+        return vim.cmd(n.tmux)
+    end
+    local ok, smart = pcall(require, "smart-splits")
+    if ok and type(smart[n.smart]) == "function" then
+        return smart[n.smart]()
+    end
+    vim.cmd("wincmd " .. n.wincmd)
+end
+
 local function setup_keys(buf)
+    for dir, lhs in pairs(config.options.terminal.navigation or {}) do
+        if lhs and NAV[dir] then
+            vim.keymap.set("t", lhs, function()
+                M.navigate(dir)
+            end, { buffer = buf, desc = "Navigate " .. dir })
+        end
+    end
     if not config.options.terminal.double_esc then
         return
     end

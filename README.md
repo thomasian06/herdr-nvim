@@ -74,6 +74,8 @@ require("herdr").setup({
     double_esc = true, -- double-tap <Esc> leaves terminal mode; a single <Esc> reaches the agent
     auto_insert = true, -- entering a herdr terminal window enters terminal mode
     winbar = true, -- status, agent, name and space above each terminal
+    -- navigate windows from terminal mode (vim-tmux-navigator / smart-splits aware); false to disable
+    navigation = { left = "<C-h>", down = "<C-j>", up = "<C-k>", right = "<C-l>" },
   },
   tree = { -- unset values are borrowed from your file explorer
     width = nil,
@@ -165,7 +167,9 @@ Stays live while open.
 ## Working in agent terminals
 
 - Double-tap `<Esc>` to leave terminal mode (a single `<Esc>` still reaches the agent, e.g. to interrupt it). `<C-\><C-n>` works too.
-- Move between terminal windows with your usual window keys (`<C-h/j/k/l>` in LazyVim); entering a herdr terminal window puts you straight back into terminal mode.
+- `<C-h/j/k/l>` move between windows straight from terminal mode, and entering a herdr terminal window puts you back into terminal mode, so you can hop between agents and type without leaving terminal mode.
+  With [vim-tmux-navigator](https://github.com/christoomey/vim-tmux-navigator) or [smart-splits.nvim](https://github.com/mrjones2014/smart-splits.nvim) installed, the edges continue into tmux (or WezTerm/Kitty) panes.
+  Agents no longer receive those keys; set `terminal.navigation = false` (or pick other keys) if one needs them.
 - Each terminal window's winbar shows its status, agent, name and space, so a grid of agents stays readable.
 
 ## Behavior to know about

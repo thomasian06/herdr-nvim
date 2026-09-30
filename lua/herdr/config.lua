@@ -43,6 +43,11 @@ M.defaults = {
         auto_insert = true,
         -- Show agent, name, status and space in each terminal window's winbar.
         winbar = true,
+        -- Navigate windows straight from terminal mode with these keys (false to
+        -- disable, e.g. if an agent needs them). Uses vim-tmux-navigator or
+        -- smart-splits.nvim when installed (so edges continue into tmux panes),
+        -- else plain window moves.
+        navigation = { left = "<C-h>", down = "<C-j>", up = "<C-k>", right = "<C-l>" },
     },
     -- Debounce for re-fetching the session snapshot after server events (ms).
     refresh_debounce_ms = 80,
