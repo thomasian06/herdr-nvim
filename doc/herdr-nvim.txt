@@ -37,6 +37,8 @@ Options (defaults shown):                                     *herdr-options* >l
       remote = nil,            -- optional SSH target offered as a profile
       session = "main",        -- session for `remote`
       profiles = {},           -- { { name = "devbox", remote = "devbox" } }
+      projects_dir = nil,      -- where new spaces start ("~" = server home);
+                               -- profiles can set their own `projects_dir`
       auto_start = "ask",      -- start a missing server: "ask"|true|false
       remote_attach = "auto",  -- "auto" | "ssh" (see |herdr-requirements|)
       herdr_bin = "herdr",     -- local herdr binary
@@ -81,7 +83,7 @@ explorer or neo-tree when present.
 
 :Herdr new-space [{name}]                                  *:Herdr-new-space*
     Create a space and open its terminal (<leader>an). Asks for a name
-    unless given.
+    unless given. Starts in the connection's `projects_dir` when set.
 
 :Herdr connect [{profile}|{host}[:{session}]]                *:Herdr-connect*
     Connect to a server. Without an argument, pick one (|herdr-connections|).

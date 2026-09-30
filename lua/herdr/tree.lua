@@ -386,7 +386,11 @@ function actions.add_space(name)
         if label and vim.trim(label) ~= "" then
             params.label = vim.trim(label)
         end
-        api.request("workspace.create", params, done("workspace.create", open_created))
+        -- Start in the connection's projects folder when one is configured.
+        require("herdr.transport").resolve_path(connection.projects_dir(), function(cwd)
+            params.cwd = cwd
+            api.request("workspace.create", params, done("workspace.create", open_created))
+        end)
     end
     if type(name) == "string" then
         return create(name)

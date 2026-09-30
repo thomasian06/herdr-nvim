@@ -465,6 +465,38 @@ function M.attach_cmd(terminal_id, takeover)
         nil
 end
 
+local server_home ---@type string? cached per connection
+
+--- Resolve a path on the Herdr server: `~` is the server's home. cb(path?)
+function M.resolve_path(path, cb)
+    if not path then
+        return cb(nil)
+    end
+    if path ~= "~" and path:sub(1, 2) ~= "~/" then
+        return cb(path)
+    end
+    local function expand(home)
+        cb(home and (home .. path:sub(2)) or nil)
+    end
+    if not opts().remote then
+        return expand(vim.uv.os_homedir())
+    end
+    if server_home then
+        return expand(server_home)
+    end
+    M.ensure(function(err)
+        if err then
+            return cb(nil)
+        end
+        system(ssh({ opts().remote, 'printf %s "$HOME"' }), function(res)
+            if res.code == 0 and (res.stdout or ""):match("^/") then
+                server_home = res.stdout
+            end
+            expand(server_home)
+        end)
+    end)
+end
+
 function M.describe()
     local o = opts()
     return (o.remote and (o.remote .. ":") or "local:") .. o.session
@@ -489,6 +521,7 @@ function M.shutdown()
         vim.fn.delete(run_dir, "rf")
     end
     run_dir, ctl_path, master = nil, nil, nil
+    server_home = nil
     used_ssh_attach = false
     M.status = "idle"
     M.error = nil

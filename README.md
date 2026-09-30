@@ -60,7 +60,8 @@ Other plugin managers: add `thomasian06/herdr-nvim` and call `require("herdr").s
 require("herdr").setup({
   remote = nil, -- optional SSH target offered as a profile (nothing connects automatically)
   session = "main", -- session for `remote`
-  profiles = {}, -- e.g. { { name = "devbox", remote = "devbox", session = "main" } }
+  profiles = {}, -- e.g. { { name = "devbox", remote = "devbox", session = "main", projects_dir = "~/projects" } }
+  projects_dir = nil, -- where new spaces start on the server ("~" = server home); profiles can override
   auto_start = "ask", -- start a missing Herdr server: "ask" | true | false
   remote_attach = "auto", -- "auto" (local herdr via forwarded socket when possible) | "ssh"
   herdr_bin = "herdr", -- local herdr binary
@@ -104,7 +105,7 @@ require("herdr").setup({
 | `:Herdr open <pane_id>` | Open a terminal, e.g. `:Herdr open w1:p1` |
 | `:Herdr refresh` | Re-fetch the session snapshot |
 | `:Herdr agents` | Open every agent in the session, tiled in a new tab |
-| `:Herdr new-space [name]` | Create a space and open its terminal (`<leader>an`) |
+| `:Herdr new-space [name]` | Create a space and open its terminal (`<leader>an`); it starts in `projects_dir` when set |
 | `:Herdr connect [profile\|host[:session]]` | Connect to a server; without an argument, pick one |
 | `:Herdr disconnect` | Disconnect |
 | `:Herdr save [name]` | Save the current connection as a profile |
@@ -133,6 +134,7 @@ To connect automatically in a project, put a `.herdr-nvim.json` in it (or any pa
 ```
 
 or refer to a profile: `{ "profile": "devbox" }`.
+Add `"projects_dir": "~/projects"` to either to set where new spaces start.
 
 herdr-nvim connects when Neovim starts in that directory, or when you `:cd` into it while disconnected.
 It never switches away from an active connection; it tells you instead.

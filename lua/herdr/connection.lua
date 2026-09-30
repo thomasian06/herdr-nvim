@@ -56,8 +56,14 @@ local function normalize(c)
         name = c.name,
         remote = (c.remote ~= nil and c.remote ~= "" and c.remote ~= "local") and c.remote or nil,
         session = (c.session and c.session ~= "") and c.session or "main",
+        projects_dir = (type(c.projects_dir) == "string" and c.projects_dir ~= "") and c.projects_dir or nil,
         source = c.source,
     }
+end
+
+--- Where new spaces start for the active connection (unexpanded), or nil.
+function M.projects_dir()
+    return (M.active and M.active.projects_dir) or config.options.projects_dir
 end
 
 --- Reject values that ssh (or herdr) could read as options or that could not
@@ -68,6 +74,9 @@ function M.validate(c)
     end
     if c.session:sub(1, 1) == "-" or c.session:find("[%s%c/]") then
         return "invalid session name " .. vim.inspect(c.session)
+    end
+    if c.projects_dir and c.projects_dir:find("%c") then
+        return "invalid projects_dir " .. vim.inspect(c.projects_dir)
     end
 end
 
@@ -100,7 +109,7 @@ local function config_profiles()
     local o = config.options
     local out = {}
     if o.remote then
-        out[#out + 1] = { name = o.remote, remote = o.remote, session = o.session }
+        out[#out + 1] = { name = o.remote, remote = o.remote, session = o.session, projects_dir = o.projects_dir }
     end
     for _, p in ipairs(o.profiles or {}) do
         out[#out + 1] = p
@@ -114,10 +123,19 @@ function M.list(cb)
     local function add(c)
         c = normalize(c)
         local key = (c.remote or "") .. "\0" .. c.session
-        if not seen[key] and not M.validate(c) then
-            seen[key] = true
-            out[#out + 1] = c
+        if M.validate(c) then
+            return
         end
+        local existing = seen[key]
+        if existing then
+            -- Same server/session from several sources: keep the first entry,
+            -- filling in what it lacks (e.g. projects_dir from a profile).
+            existing.name = existing.name or c.name
+            existing.projects_dir = existing.projects_dir or c.projects_dir
+            return
+        end
+        seen[key] = c
+        out[#out + 1] = c
     end
     local o = config.options
     if M.active then
@@ -164,7 +182,8 @@ function M.save(name, c)
     data.profiles = vim.tbl_filter(function(p)
         return p.name ~= name
     end, data.profiles)
-    data.profiles[#data.profiles + 1] = { name = name, remote = c.remote, session = c.session }
+    data.profiles[#data.profiles + 1] =
+        { name = name, remote = c.remote, session = c.session, projects_dir = c.projects_dir }
     write_store(data)
 end
 
@@ -193,7 +212,7 @@ end
 
 local function remember_last(c)
     local data = read_store()
-    data.last = { name = c.name, remote = c.remote, session = c.session }
+    data.last = { name = c.name, remote = c.remote, session = c.session, projects_dir = c.projects_dir }
     write_store(data)
 end
 
@@ -273,9 +292,14 @@ local function parse_project(content)
         return nil, "invalid JSON"
     end
     if data.profile then
-        return { profile = tostring(data.profile) }
+        return { profile = tostring(data.profile), projects_dir = data.projects_dir }
     end
-    local c = normalize({ name = data.name, remote = data.remote, session = data.session })
+    local c = normalize({
+        name = data.name,
+        remote = data.remote,
+        session = data.session,
+        projects_dir = data.projects_dir,
+    })
     local err = M.validate(c)
     if err then
         return nil, err
@@ -358,7 +382,12 @@ function M.autoconnect(dir)
     end
     local function connect()
         if c.profile then
-            return M.resolve(c.profile, go)
+            return M.resolve(c.profile, function(conn)
+                if type(c.projects_dir) == "string" and c.projects_dir ~= "" then
+                    conn.projects_dir = c.projects_dir
+                end
+                go(conn)
+            end)
         end
         go(c)
     end

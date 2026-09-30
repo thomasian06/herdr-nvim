@@ -10,6 +10,10 @@ M.defaults = {
     -- { { name = "devbox", remote = "devbox", session = "main" } }.
     -- Herdr's saved machines and profiles saved with `:Herdr save` are offered too.
     profiles = {},
+    -- Folder on the Herdr server where new spaces start (`~` is the server's
+    -- home). Profiles can set their own `projects_dir`. nil: Herdr's default
+    -- (follow the last focused space).
+    projects_dir = nil,
     -- Start the Herdr server when it is not running: "ask" | true | false.
     auto_start = "ask",
     -- How terminals attach to a remote server:
