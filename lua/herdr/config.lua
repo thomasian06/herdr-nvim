@@ -22,6 +22,7 @@ M.defaults = {
         toggle = "<leader>aa", -- toggle the herdr tree
         pick = "<leader>ap", -- spaces/agents picker
         connect = "<leader>ac", -- connect to a server/profile
+        new_space = "<leader>an", -- create a space and open its terminal
     },
     -- Herdr binary for local mode.
     herdr_bin = "herdr",

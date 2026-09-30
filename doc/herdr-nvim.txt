@@ -45,6 +45,7 @@ Options (defaults shown):                                     *herdr-options* >l
         toggle = "<leader>aa",
         pick = "<leader>ap",
         connect = "<leader>ac",
+        new_space = "<leader>an",
       },
       notify = { enabled = true, sound = "herdr", message = true,
         on = { done = true, blocked = true } },
@@ -77,6 +78,10 @@ explorer or neo-tree when present.
 
 :Herdr agents                                                 *:Herdr-agents*
     Open every agent in the session, tiled in a new tab.
+
+:Herdr new-space [{name}]                                  *:Herdr-new-space*
+    Create a space and open its terminal (<leader>an). Asks for a name
+    unless given.
 
 :Herdr connect [{profile}|{host}[:{session}]]                *:Herdr-connect*
     Connect to a server. Without an argument, pick one (|herdr-connections|).

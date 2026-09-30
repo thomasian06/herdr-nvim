@@ -69,6 +69,7 @@ require("herdr").setup({
     toggle = "<leader>aa", -- toggle the tree
     pick = "<leader>ap", -- spaces/agents picker
     connect = "<leader>ac", -- connect to a server/profile
+    new_space = "<leader>an", -- create a space and open its terminal
   }, -- set a key (or all of `keymaps`) to false to disable
   notify = {
     enabled = true,
@@ -103,6 +104,7 @@ require("herdr").setup({
 | `:Herdr open <pane_id>` | Open a terminal, e.g. `:Herdr open w1:p1` |
 | `:Herdr refresh` | Re-fetch the session snapshot |
 | `:Herdr agents` | Open every agent in the session, tiled in a new tab |
+| `:Herdr new-space [name]` | Create a space and open its terminal (`<leader>an`) |
 | `:Herdr connect [profile\|host[:session]]` | Connect to a server; without an argument, pick one |
 | `:Herdr disconnect` | Disconnect |
 | `:Herdr save [name]` | Save the current connection as a profile |

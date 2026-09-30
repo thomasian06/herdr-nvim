@@ -371,19 +371,30 @@ local function open_created(result)
     terminal.open(pane, { how = "current" })
 end
 
-function actions.add_space()
-    if not require("herdr.connection").active then
-        return require("herdr.connection").pick()
+--- Create a space (asking for a name unless given) and open its terminal.
+--- Asks for a connection first when disconnected.
+---@param name string?
+function actions.add_space(name)
+    local connection = require("herdr.connection")
+    if not connection.active then
+        return connection.with_connection(function()
+            actions.add_space(name)
+        end)
     end
-    require("herdr.ui").input({ prompt = "New space name (empty for default): " }, function(name)
-        if name == nil then
-            return
-        end
+    local function create(label)
         local params = { focus = false }
-        if vim.trim(name) ~= "" then
-            params.label = vim.trim(name)
+        if label and vim.trim(label) ~= "" then
+            params.label = vim.trim(label)
         end
         api.request("workspace.create", params, done("workspace.create", open_created))
+    end
+    if type(name) == "string" then
+        return create(name)
+    end
+    require("herdr.ui").input({ prompt = "New space name (empty for default): " }, function(input)
+        if input ~= nil then
+            create(input)
+        end
     end)
 end
 
@@ -538,7 +549,9 @@ local function setup_buffer()
     map("T", actions.open("current", true))
     map("O", actions.open_all)
     map("a", actions.add)
-    map("A", actions.add_space)
+    map("A", function()
+        actions.add_space()
+    end)
     map("r", actions.rename)
     map("d", actions.delete)
     map("f", actions.focus_in_herdr)
@@ -591,6 +604,7 @@ function M.toggle()
 end
 
 M.render = render
+M.add_space = actions.add_space
 
 state.on_change(function()
     vim.schedule(render)

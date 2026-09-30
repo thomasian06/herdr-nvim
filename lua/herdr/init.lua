@@ -11,6 +11,7 @@ local function set_keymaps()
         { keys.toggle, "<cmd>Herdr toggle<cr>", "Herdr tree" },
         { keys.pick, "<cmd>Herdr pick<cr>", "Herdr pick space/agent" },
         { keys.connect, "<cmd>Herdr connect<cr>", "Herdr connect" },
+        { keys.new_space, "<cmd>Herdr new-space<cr>", "Herdr new space" },
     }
     for _, d in ipairs(defs) do
         if d[1] then
@@ -128,6 +129,11 @@ function M.agents()
         end
     end)
     state.start()
+end
+
+--- Create a space (asking for a name unless given) and open its terminal.
+function M.new_space(name)
+    require("herdr.tree").add_space(name)
 end
 
 --- Pick a space/agent (snacks.picker with live preview; vim.ui.select fallback).

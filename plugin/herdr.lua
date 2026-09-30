@@ -25,6 +25,9 @@ local subcommands = {
     agents = function()
         require("herdr").agents()
     end,
+    ["new-space"] = function(args)
+        require("herdr").new_space(args[1] and table.concat(args, " ") or nil)
+    end,
     connect = function(args)
         local connection = require("herdr.connection")
         if not args[1] then

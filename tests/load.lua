@@ -46,6 +46,7 @@ require("herdr").setup({ herdr_bin = "herdr-nvim-test-missing-binary" })
 check("command :Herdr", vim.fn.exists(":Herdr") == 2)
 check("keymap <leader>aa", vim.fn.maparg("<leader>aa", "n") ~= "")
 check("keymap <leader>ap", vim.fn.maparg("<leader>ap", "n") ~= "")
+check("keymap <leader>an", vim.fn.maparg("<leader>an", "n") ~= "")
 
 require("herdr").setup({ keymaps = false })
 vim.keymap.del("n", "<leader>aa")
