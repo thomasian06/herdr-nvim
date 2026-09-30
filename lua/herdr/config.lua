@@ -46,8 +46,13 @@ M.defaults = {
     },
     -- Herdr terminal buffers.
     terminal = {
-        -- Double-tap <Esc> to leave terminal mode; a single <Esc> still reaches the agent.
-        double_esc = true,
+        -- <Esc> in herdr terminals:
+        --   "normal"       leaves terminal mode; never sent to the agent. Move an
+        --                  agent that interrupts on <Esc> to another key (see
+        --                  the README, e.g. pi's app.interrupt -> ctrl+c)
+        --   "passthrough"  always goes to the agent (leave terminal mode with
+        --                  <C-\><C-n>)
+        esc = "normal",
         -- Enter terminal mode when entering a herdr terminal window.
         auto_insert = true,
         -- Show agent, name, status and space in each terminal window's winbar.

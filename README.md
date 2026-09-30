@@ -77,7 +77,7 @@ require("herdr").setup({
     on = { done = true, blocked = true },
   },
   terminal = {
-    double_esc = true, -- double-tap <Esc> leaves terminal mode; a single <Esc> reaches the agent
+    esc = "normal", -- <Esc> leaves terminal mode ("passthrough": <Esc> goes to the agent)
     auto_insert = true, -- entering a herdr terminal window enters terminal mode
     winbar = true, -- status, agent, name and space above each terminal
     -- navigate windows from terminal mode (vim-tmux-navigator / smart-splits aware); false to disable
@@ -211,7 +211,17 @@ To keep buffer tabs to the right of the tree (like with neo-tree or snacks' expl
 
 ## Working in agent terminals
 
-- Double-tap `<Esc>` to leave terminal mode (a single `<Esc>` still reaches the agent, e.g. to interrupt it). `<C-\><C-n>` works too.
+- `<Esc>` leaves terminal mode and is not sent to the agent. Agents that interrupt on `<Esc>` need another interrupt key; for [pi](https://github.com/earendil-works/pi-coding-agent), in `~/.pi/agent/keybindings.json` on the machine running the agents:
+
+  ```json
+  {
+    "app.interrupt": ["ctrl+c", "escape"],
+    "app.clear": ["alt+c"],
+    "tui.altScreen.searchClose": ["escape", "ctrl+c"]
+  }
+  ```
+
+  `app.clear` moves off `ctrl+c` because its second press exits pi. Keeping `escape` too leaves Herdr's own UI unchanged. Set `terminal.esc = "passthrough"` to send `<Esc>` to the agent instead (then leave terminal mode with `<C-\><C-n>`).
 - `<C-h/j/k/l>` move between windows straight from terminal mode, and entering a herdr terminal window puts you back into terminal mode, so you can hop between agents and type without leaving terminal mode.
   With [vim-tmux-navigator](https://github.com/christoomey/vim-tmux-navigator) or [smart-splits.nvim](https://github.com/mrjones2014/smart-splits.nvim) installed, the edges continue into tmux (or WezTerm/Kitty) panes.
   Agents no longer receive those keys; set `terminal.navigation = false` (or pick other keys) if one needs them.

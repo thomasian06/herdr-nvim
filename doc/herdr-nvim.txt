@@ -48,8 +48,8 @@ Options (defaults shown):                                     *herdr-options* >l
       },
       notify = { enabled = true, sound = "herdr", message = true,
         on = { done = true, blocked = true } },
-      terminal = {             -- double <Esc> -> normal mode, auto insert,
-        double_esc = true, auto_insert = true, winbar = true, -- winbar
+      terminal = {             -- <Esc> -> normal mode, auto insert,
+        esc = "normal", auto_insert = true, winbar = true,
       },
       tree = {                 -- unset values borrowed from your explorer
         width = nil, position = nil, icons = nil, indent = nil,
@@ -180,8 +180,10 @@ Run `:checkhealth herdr` to check the current connection.
 - Closing the terminal buffer detaches. `Ctrl-B q` in the terminal also
   detaches.
 - Terminal buffers of panes closed in Herdr are removed automatically.
-- In a herdr terminal, double-tap <Esc> for normal mode (a single <Esc>
-  reaches the agent). Entering a herdr terminal window enters terminal mode.
+- In a herdr terminal, <Esc> leaves terminal mode and is not sent to the
+  agent; give agents that interrupt on <Esc> another key (see the README for
+  pi), or set `terminal.esc = "passthrough"`. Entering a herdr terminal window
+  enters terminal mode.
   Each terminal window's winbar shows status, agent, name and space.
 - Scrolling moves through the terminal's history on the Herdr server: mouse
   wheel in either mode; in normal mode <C-u> <C-d> <C-b> <C-f> <PageUp>

@@ -108,7 +108,6 @@ local function target_window(how)
 end
 
 local config = require("herdr.config")
-local esc_timers = {} ---@type table<integer, uv.uv_timer_t>
 local cached_style ---@type table? resolved once; winbar() runs on every redraw
 
 --- Buffer-local terminal keys: double <Esc> leaves terminal mode (a single
@@ -278,23 +277,9 @@ local function setup_keys(buf)
             end, { buffer = buf, desc = "Navigate " .. dir })
         end
     end
-    if not config.options.terminal.double_esc then
-        return
+    if config.options.terminal.esc ~= "passthrough" then
+        vim.keymap.set("t", "<Esc>", "<C-\\><C-n>", { buffer = buf, desc = "Normal mode" })
     end
-    vim.keymap.set("t", "<Esc>", function()
-        local timer = esc_timers[buf]
-        if not timer then
-            timer = assert(vim.uv.new_timer())
-            esc_timers[buf] = timer
-        end
-        if timer:is_active() then
-            timer:stop()
-            vim.cmd("stopinsert")
-            return ""
-        end
-        timer:start(200, 0, function() end)
-        return "<Esc>"
-    end, { buffer = buf, expr = true, desc = "Double <Esc>: normal mode" })
 end
 
 --- Winbar for herdr terminal windows: status, agent, name, space.
@@ -597,11 +582,6 @@ vim.api.nvim_create_autocmd("BufWipeout", {
         local id = vim.b[ev.buf].herdr_pane_id
         if id then
             scroll[id] = nil
-        end
-        local timer = esc_timers[ev.buf]
-        if timer then
-            esc_timers[ev.buf] = nil
-            timer:close()
         end
     end,
 })
