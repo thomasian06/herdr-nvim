@@ -57,6 +57,11 @@ M.defaults = {
         -- smart-splits.nvim when installed (so edges continue into tmux panes),
         -- else plain window moves.
         navigation = { left = "<C-h>", down = "<C-j>", up = "<C-k>", right = "<C-l>" },
+        -- Scroll through Herdr's history (the terminal buffer itself only holds
+        -- the current screen): mouse wheel, and in normal mode <C-u>/<C-d>,
+        -- <C-b>/<C-f>, <PageUp>/<PageDown>, <C-y>/<C-e>, gg, G. Typing returns
+        -- to the live bottom.
+        scroll = true,
     },
     -- Debounce for re-fetching the session snapshot after server events (ms).
     refresh_debounce_ms = 80,

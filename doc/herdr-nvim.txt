@@ -183,6 +183,10 @@ Run `:checkhealth herdr` to check the current connection.
 - In a herdr terminal, double-tap <Esc> for normal mode (a single <Esc>
   reaches the agent). Entering a herdr terminal window enters terminal mode.
   Each terminal window's winbar shows status, agent, name and space.
+- Scrolling moves through the terminal's history on the Herdr server: mouse
+  wheel in either mode; in normal mode <C-u> <C-d> <C-b> <C-f> <PageUp>
+  <PageDown> <C-y> <C-e>, gg (start) and G (live). The winbar shows the
+  position while scrolled back; typing returns to the live bottom.
 - <C-h/j/k/l> navigate windows from terminal mode (through vim-tmux-navigator
   or smart-splits.nvim when installed, so edges reach tmux panes). Set
   `terminal.navigation = false` if an agent needs those keys.

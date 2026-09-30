@@ -82,6 +82,7 @@ require("herdr").setup({
     winbar = true, -- status, agent, name and space above each terminal
     -- navigate windows from terminal mode (vim-tmux-navigator / smart-splits aware); false to disable
     navigation = { left = "<C-h>", down = "<C-j>", up = "<C-k>", right = "<C-l>" },
+    scroll = true, -- scroll through Herdr's history (wheel, <C-u>/<C-d>, gg/G, ...)
   },
   tree = { -- unset values are borrowed from your file explorer
     width = nil,
@@ -214,6 +215,8 @@ To keep buffer tabs to the right of the tree (like with neo-tree or snacks' expl
 - `<C-h/j/k/l>` move between windows straight from terminal mode, and entering a herdr terminal window puts you back into terminal mode, so you can hop between agents and type without leaving terminal mode.
   With [vim-tmux-navigator](https://github.com/christoomey/vim-tmux-navigator) or [smart-splits.nvim](https://github.com/mrjones2014/smart-splits.nvim) installed, the edges continue into tmux (or WezTerm/Kitty) panes.
   Agents no longer receive those keys; set `terminal.navigation = false` (or pick other keys) if one needs them.
+- Scrolling goes through the terminal's full history on the Herdr server (a terminal buffer itself only holds the current screen): the mouse wheel in either mode, and in normal mode `<C-u>`/`<C-d>`, `<C-b>`/`<C-f>`, `<PageUp>`/`<PageDown>`, `<C-y>`/`<C-e>`, `gg` (start of history) and `G` (live).
+  The winbar shows the position (`↑ 120/2511`) while scrolled back, and going back to typing returns to the live bottom.
 - Each terminal window's winbar shows its status, agent, name and space, so a grid of agents stays readable.
 
 ## Behavior to know about
