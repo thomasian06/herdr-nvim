@@ -67,11 +67,13 @@ M.defaults = {
         -- smart-splits.nvim when installed (so edges continue into tmux panes),
         -- else plain window moves.
         navigation = { left = "<C-h>", down = "<C-j>", up = "<C-k>", right = "<C-l>" },
-        -- Scroll through Herdr's history (the terminal buffer itself only holds
-        -- the current screen): mouse wheel, and in normal mode <C-u>/<C-d>,
-        -- <C-b>/<C-f>, <PageUp>/<PageDown>, <C-y>/<C-e>, gg, G. Typing returns
-        -- to the live bottom.
-        scroll = true,
+        -- Scrolling up (<C-u>, <C-b>, <PageUp>, <C-y>, k, gg, mouse wheel) or
+        -- searching (/, ?) opens a local, cached copy of the terminal's history
+        -- where everything is native Neovim; i/a/q/<Esc> return to the live
+        -- terminal. The cache syncs in the background while attached.
+        history = true,
+        -- Most lines kept per terminal's history cache.
+        history_limit = 100000,
     },
     -- Debounce for re-fetching the session snapshot after server events (ms).
     refresh_debounce_ms = 80,

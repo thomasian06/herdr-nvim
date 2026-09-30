@@ -28,6 +28,7 @@ for _, mod in ipairs({
     "herdr.health",
     "herdr.notify",
     "herdr.ui",
+    "herdr.history",
 }) do
     local ok, err = pcall(require, mod)
     check("require " .. mod, ok, not ok and tostring(err) or nil)
@@ -156,6 +157,42 @@ do
     check("no notification on connect", #fired == 0)
     check("bundled sound exists", vim.uv.fs_stat(notify._sound_file("done")) ~= nil, notify._sound_file("done"))
     notify.play, vim.notify = real_play, real_notify
+end
+
+-- History cache: merging reads into a growing local copy.
+do
+    local history = require("herdr.history")
+    local function text(from, to, screen)
+        local t = {}
+        for i = from, to do
+            t[#t + 1] = "\27[32mline " .. i .. "\27[0m"
+        end
+        for _, l in ipairs(screen or {}) do
+            t[#t + 1] = l
+        end
+        return table.concat(t, "\r\n")
+    end
+    local c = history._cache_for("test:p1")
+    -- First read: lines 1..100, the last 10 are the screen.
+    check("history first read", history._merge(c, text(1, 100), 10, true) and #c.stable == 90 and #c.screen == 10)
+    -- Overlapping read (lines 50..130): only 91..120 become new settled lines.
+    check("history overlap", history._merge(c, text(50, 130), 10, false) and #c.stable == 120, #c.stable)
+    check("history order", c.plain[120] == "line 120" and c.plain[1] == "line 1", c.plain[120])
+    -- Only the screen changed (status bar ticking): nothing new settles.
+    check(
+        "history screen-only change",
+        history._merge(c, text(50, 120, { "status 1", "status 2" }), 2, false) and #c.stable == 120
+    )
+    -- A small read that no longer overlaps asks for a full read...
+    check("history gap asks for full read", history._merge(c, text(500, 520), 5, false) == false and #c.stable == 120)
+    -- ...and a full read that still does not overlap marks the gap.
+    check(
+        "history gap marker",
+        history._merge(c, text(500, 520), 5, true)
+            and c.plain[121]:find("not loaded", 1, true) ~= nil
+            and c.plain[122] == "line 500"
+    )
+    history._caches["test:p1"] = nil
 end
 
 os.exit(failures == 0 and 0 or 1)

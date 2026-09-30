@@ -192,10 +192,12 @@ Run `:checkhealth herdr` to check the current connection.
   pi), or set `terminal.esc = "passthrough"`. Entering a herdr terminal window
   enters terminal mode.
   Each terminal window's winbar shows status, agent, name and space.
-- Scrolling moves through the terminal's history on the Herdr server: mouse
-  wheel in either mode; in normal mode <C-u> <C-d> <C-b> <C-f> <PageUp>
-  <PageDown> <C-y> <C-e>, gg (start) and G (live). The winbar shows the
-  position while scrolled back; typing returns to the live bottom.
+- Scrolling up (<C-u> <C-b> <PageUp> <C-y> k gg, mouse wheel) or searching
+  (/ ?) opens a local, cached copy of the terminal's history (colors kept)
+  where everything is native Neovim; i/a return to the live terminal and
+  type, q/<Esc> return to it. The first open loads the latest 1000 lines
+  (Herdr's per-read limit); while attached, the cache syncs in the
+  background and keeps everything since the terminal was opened.
 - <C-h/j/k/l> navigate windows from terminal mode (through vim-tmux-navigator
   or smart-splits.nvim when installed, so edges reach tmux panes). Set
   `terminal.navigation = false` if an agent needs those keys.

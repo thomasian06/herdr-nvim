@@ -40,6 +40,7 @@ function M.setup(opts)
     config.setup(opts)
     set_keymaps()
     require("herdr.notify").setup()
+    require("herdr.history").setup()
     -- Nothing connects on its own, except a trusted project file
     -- (.herdr-nvim.json) at startup or after :cd while disconnected.
     local group = vim.api.nvim_create_augroup("herdr_autoconnect", { clear = true })

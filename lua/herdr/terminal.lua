@@ -48,6 +48,9 @@ end
 
 --- Detach and remove every herdr terminal buffer (e.g. when switching servers).
 function M.close_all()
+    if package.loaded["herdr.history"] then
+        require("herdr.history").forget_all()
+    end
     M.detach_all()
     for terminal_id, buf in pairs(M.buffers) do
         M.buffers[terminal_id] = nil
@@ -133,143 +136,51 @@ function M.navigate(dir)
     vim.cmd("wincmd " .. n.wincmd)
 end
 
--- Scrolling -------------------------------------------------------------------
+-- History ---------------------------------------------------------------------
 --
 -- `herdr terminal attach` repaints the pane's screen in place, so the terminal
--- buffer only ever holds one screen. History lives on the server: scroll the
--- pane's viewport there (pane.scroll) and the attach repaints what is visible.
-
--- Per pane: `offset` is the server's confirmed position; `target` is the
--- latest position asked for (so fast wheel steps accumulate while a request is
--- in flight); `sent` is what the in-flight request asked for.
-local scroll = {} ---@type table<string, { offset: integer, target: integer?, sent: integer?, max: integer?, rows: integer? }>
-
-local function scroll_state(pane)
-    local s = scroll[pane.pane_id]
-    if not s then
-        local info = pane.scroll or {}
-        s = {
-            offset = info.offset_from_bottom or 0,
-            max = info.max_offset_from_bottom,
-            rows = info.viewport_rows,
-        }
-        scroll[pane.pane_id] = s
-    end
-    return s
-end
-
-local function send_scroll(pane_id, s)
-    if s.sent or not s.target or s.target == s.offset then
-        return
-    end
-    local want = s.target
-    s.sent = want
-    require("herdr.api").request("pane.scroll", { pane_id = pane_id, offset_from_bottom = want }, function(_, res)
-        s.sent = nil
-        local info = res and res.pane and res.pane.scroll
-        s.offset = info and info.offset_from_bottom or want
-        if info then
-            s.max = info.max_offset_from_bottom or s.max
-            s.rows = info.viewport_rows or s.rows
-        end
-        if s.target == want then
-            s.target = nil
-        end
-        pcall(vim.cmd, "redrawstatus!")
-        send_scroll(pane_id, s) -- a newer target arrived meanwhile (fast wheel)
-    end)
-end
-
---- Scroll a herdr terminal buffer's pane. `amount` is lines (positive = back
---- in history), or "top" / "bottom", or "half" / "page" with a sign.
-function M.scroll(buf, amount, sign)
-    local pane = state.pane(vim.b[buf].herdr_pane_id or "")
-    if not pane then
-        return
-    end
-    local s = scroll_state(pane)
-    local rows = s.rows or vim.api.nvim_win_get_height(0)
-    local base = s.target or s.offset
-    local target
-    if amount == "top" then
-        target = s.max or (base + 1000000)
-    elseif amount == "bottom" then
-        target = 0
-    elseif amount == "half" then
-        target = base + sign * math.max(1, math.floor(rows / 2))
-    elseif amount == "page" then
-        target = base + sign * math.max(1, rows - 2)
-    else
-        target = base + amount
-    end
-    target = math.max(0, s.max and math.min(target, s.max) or target)
-    if target == base then
-        return
-    end
-    s.target = target
-    pcall(vim.cmd, "redrawstatus!")
-    send_scroll(pane.pane_id, s)
-end
-
---- "↑ 200/982" while scrolled back, for the winbar.
-function M.scroll_label(pane_id)
-    local s = scroll[pane_id]
-    local at = s and (s.target or s.offset) or 0
-    if at == 0 then
-        return nil
-    end
-    return string.format("↑ %d/%s", at, s.max and tostring(s.max) or "?")
-end
+-- buffer only ever holds one screen. Scrolling up (or searching) opens a local,
+-- cached copy of the pane's history instead (see herdr.history), where
+-- everything is native Neovim.
 
 local function wheel_lines()
     return tonumber((vim.o.mousescroll or ""):match("ver:(%d+)")) or 3
 end
 
-local function setup_scroll_keys(buf)
-    if not config.options.terminal.scroll then
+local function setup_history_keys(buf)
+    if not config.options.terminal.history then
         return
     end
+    local history = require("herdr.history")
     local function map(modes, lhs, fn, desc)
         vim.keymap.set(modes, lhs, fn, { buffer = buf, desc = desc })
     end
+    local function motion(keys)
+        return function()
+            history.open(vim.v.count > 0 and (vim.v.count .. keys) or keys)
+        end
+    end
     map({ "n", "t" }, "<ScrollWheelUp>", function()
-        M.scroll(buf, wheel_lines())
-    end, "Scroll herdr history up")
-    map({ "n", "t" }, "<ScrollWheelDown>", function()
-        M.scroll(buf, -wheel_lines())
-    end, "Scroll herdr history down")
-    map("n", "<C-u>", function()
-        M.scroll(buf, "half", vim.v.count1)
-    end, "Scroll herdr history half page up")
-    map("n", "<C-d>", function()
-        M.scroll(buf, "half", -vim.v.count1)
-    end, "Scroll herdr history half page down")
-    for _, lhs in ipairs({ "<C-b>", "<PageUp>" }) do
-        map("n", lhs, function()
-            M.scroll(buf, "page", vim.v.count1)
-        end, "Scroll herdr history page up")
+        history.open(wheel_lines() .. "<C-y>")
+    end, "Herdr history (scroll up)")
+    map("n", "<C-u>", motion("<C-u>"), "Herdr history (half page up)")
+    map("n", "<C-b>", motion("<C-b>"), "Herdr history (page up)")
+    map("n", "<PageUp>", motion("<C-b>"), "Herdr history (page up)")
+    map("n", "<C-y>", motion("<C-y>"), "Herdr history (line up)")
+    map("n", "k", motion("k"), "Herdr history (up)")
+    map("n", "gg", motion("gg"), "Herdr history (top)")
+    for _, key in ipairs({ "/", "?" }) do
+        map("n", key, function()
+            history.open("")
+            vim.schedule(function()
+                vim.api.nvim_feedkeys(key, "n", false)
+            end)
+        end, "Search herdr history")
     end
-    for _, lhs in ipairs({ "<C-f>", "<PageDown>" }) do
-        map("n", lhs, function()
-            M.scroll(buf, "page", -vim.v.count1)
-        end, "Scroll herdr history page down")
-    end
-    map("n", "<C-y>", function()
-        M.scroll(buf, vim.v.count1)
-    end, "Scroll herdr history line up")
-    map("n", "<C-e>", function()
-        M.scroll(buf, -vim.v.count1)
-    end, "Scroll herdr history line down")
-    map("n", "gg", function()
-        M.scroll(buf, "top")
-    end, "Top of herdr history")
-    map("n", "G", function()
-        M.scroll(buf, "bottom")
-    end, "Bottom of herdr history (live)")
 end
 
 local function setup_keys(buf)
-    setup_scroll_keys(buf)
+    setup_history_keys(buf)
     for dir, lhs in pairs(config.options.terminal.navigation or {}) do
         if lhs and NAV[dir] then
             vim.keymap.set("t", lhs, function()
@@ -318,9 +229,8 @@ function M.winbar()
     if pane.agent_status and pane.agent_status ~= "unknown" then
         parts[#parts + 1] = "%#" .. st.hl .. "#  " .. pane.agent_status .. "%*"
     end
-    local scrolled = M.scroll_label(pane.pane_id)
-    if scrolled then
-        parts[#parts + 1] = "%#HerdrAttached#  " .. scrolled .. "%*"
+    if vim.b[buf].herdr_history then
+        parts[#parts + 1] = "%#HerdrAttached#  󰋚 history  (i: live)%*"
     end
     parts[#parts + 1] = "%=%#HerdrMuted#" .. esc(ws and ws.label or pane.workspace_id) .. " %*"
     return table.concat(parts)
@@ -543,9 +453,9 @@ end)
 local term_group = vim.api.nvim_create_augroup("herdr_terminal_ui", { clear = true })
 vim.api.nvim_create_autocmd("BufWinEnter", {
     group = term_group,
-    pattern = "herdr://*",
+    pattern = { "herdr://*", "herdr-history://*" },
     callback = function(ev)
-        if vim.b[ev.buf].herdr_terminal_id then
+        if vim.b[ev.buf].herdr_terminal_id or vim.b[ev.buf].herdr_history then
             M.decorate(vim.api.nvim_get_current_win())
         end
     end,
@@ -563,25 +473,13 @@ vim.api.nvim_create_autocmd({ "BufEnter", "WinEnter" }, {
         end
     end,
 })
--- Going back to typing returns to the live bottom of the history.
-vim.api.nvim_create_autocmd("TermEnter", {
-    group = term_group,
-    pattern = "herdr://*",
-    callback = function(ev)
-        local id = vim.b[ev.buf].herdr_pane_id
-        local s = id and scroll[id]
-        if s and (s.target or s.offset) > 0 then
-            M.scroll(ev.buf, "bottom")
-        end
-    end,
-})
 vim.api.nvim_create_autocmd("BufWipeout", {
     group = term_group,
     pattern = "herdr://*",
     callback = function(ev)
         local id = vim.b[ev.buf].herdr_pane_id
-        if id then
-            scroll[id] = nil
+        if id and package.loaded["herdr.history"] then
+            require("herdr.history").forget(id)
         end
     end,
 })
