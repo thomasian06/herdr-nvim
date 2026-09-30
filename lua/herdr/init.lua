@@ -37,12 +37,20 @@ end
 
 function M.setup(opts)
     config.setup(opts)
-    -- Start on setup()'s remote/session when given, else the last connection used.
-    local initial = require("herdr.connection").initial(opts)
-    config.options.remote = initial.remote
-    config.options.session = initial.session
-    require("herdr.connection")._current_name = initial.name
     set_keymaps()
+    require("herdr.notify").setup()
+    -- Nothing connects on its own, except a trusted project file
+    -- (.herdr-nvim.json) at startup or after :cd while disconnected.
+    local group = vim.api.nvim_create_augroup("herdr_autoconnect", { clear = true })
+    local function autoconnect()
+        require("herdr.connection").autoconnect()
+    end
+    if vim.v.vim_did_enter == 1 then
+        vim.schedule(autoconnect)
+    else
+        vim.api.nvim_create_autocmd("VimEnter", { group = group, once = true, callback = autoconnect })
+    end
+    vim.api.nvim_create_autocmd("DirChanged", { group = group, pattern = "global", callback = autoconnect })
     vim.api.nvim_create_autocmd("VimLeavePre", {
         group = vim.api.nvim_create_augroup("herdr_transport", { clear = true }),
         callback = function()
@@ -69,6 +77,11 @@ end
 
 --- Open a pane by id (e.g. "w1:p1").
 function M.open(pane_id, opts)
+    if not require("herdr.connection").active then
+        return require("herdr.connection").with_connection(function()
+            M.open(pane_id, opts)
+        end)
+    end
     local state = require("herdr.state")
     local function go()
         require("herdr.terminal").open(pane_id, opts)
@@ -88,6 +101,9 @@ end
 
 --- Open every agent in the session, tiled in a new tab.
 function M.agents()
+    if not require("herdr.connection").active then
+        return require("herdr.connection").with_connection(M.agents)
+    end
     local state = require("herdr.state")
     local function go()
         local panes = {}

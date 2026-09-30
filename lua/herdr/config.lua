@@ -35,6 +35,15 @@ M.defaults = {
         icons = nil, -- e.g. { agent = "A ", shell = "$ " }
         indent = nil, -- e.g. { vertical = "| ", middle = "|-", last = "`-" }
     },
+    -- Notifications when an agent finishes or needs input (Herdr's rules and sounds).
+    notify = {
+        enabled = true,
+        -- "herdr": follow Herdr's [ui.sound] settings; true: always; false: never.
+        sound = "herdr",
+        -- Also show a vim.notify message.
+        message = true,
+        on = { done = true, blocked = true },
+    },
     -- Herdr terminal buffers.
     terminal = {
         -- Double-tap <Esc> to leave terminal mode; a single <Esc> still reaches the agent.

@@ -34,8 +34,14 @@ local run_dir, ctl_path, master
 local used_ssh_attach = false
 local generation = 0 -- bumps on shutdown so stale callbacks can bail out
 
+--- Plugin options, with `remote`/`session` taken from the active connection
+--- (`remote = false` means the local server).
 local function opts()
-    return config.options
+    local c = require("herdr.connection").active
+    return setmetatable({
+        remote = c and c.remote or false,
+        session = c and c.session or "main",
+    }, { __index = config.options })
 end
 
 -- vim.system callbacks run in a fast (libuv) context where most of the Vim API

@@ -157,7 +157,11 @@ local function render()
             add("  " .. l, nil, { { 0, #l + 2, "HerdrError" } })
         end
     end
-    if not state.snapshot and not state.error then
+    if not connection.active then
+        local hint = "  press C to connect (:Herdr connect)"
+        add("", nil)
+        add(hint, nil, { { 0, #hint, "HerdrMuted" } })
+    elseif not state.snapshot and not state.error then
         add("  connecting…", nil, { { 0, 15, "HerdrMuted" } })
     end
 
@@ -368,6 +372,9 @@ local function open_created(result)
 end
 
 function actions.add_space()
+    if not require("herdr.connection").active then
+        return require("herdr.connection").pick()
+    end
     require("herdr.ui").input({ prompt = "New space name (empty for default): " }, function(name)
         if name == nil then
             return
@@ -382,6 +389,9 @@ end
 
 --- `a`: new terminal in the space under the cursor, or a new space on the root.
 function actions.add()
+    if not require("herdr.connection").active then
+        return require("herdr.connection").pick()
+    end
     local node = current_node()
     if not node or node.kind == "root" then
         return actions.add_space()

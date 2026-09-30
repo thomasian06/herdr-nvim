@@ -1,18 +1,30 @@
 -- Connections: which Herdr server/session the plugin talks to.
 --
 -- A connection is { name?, remote?, session }. `remote = nil` means the local
--- Herdr server. One connection is active at a time.
+-- Herdr server. At most one connection is active; nothing connects until you
+-- ask (`:Herdr connect`), except a project file:
 --
--- Where connections come from (shown together in `:Herdr connect`):
+--   .herdr-nvim.json in the working directory or a parent, e.g.
+--     { "remote": "devbox", "session": "main" }   or   { "profile": "devbox" }
+--   connects when Neovim starts there, or when you :cd into it while
+--   disconnected. It is read through vim.secure.read(), so Neovim asks you to
+--   trust each file once (like 'exrc').
+--
+-- Known connections, offered by `:Herdr connect`:
 --   - local Herdr (when `herdr` is installed)
---   - `profiles` from setup()
+--   - `profiles` (and `remote`/`session`) from setup()
 --   - Herdr's own saved machines (`herdr machine list --json`)
---   - profiles saved from Neovim (`:Herdr save`), stored with the last-used
---     connection in stdpath("data")/herdr-nvim/connections.json
+--   - profiles saved with `:Herdr save`, stored with the last-used connection
+--     in stdpath("data")/herdr-nvim/connections.json
 
 local config = require("herdr.config")
 
 local M = {}
+
+M.PROJECT_FILE = ".herdr-nvim.json"
+
+---@type table? the active connection, nil when disconnected
+M.active = nil
 
 local function store_path()
     return vim.fn.stdpath("data") .. "/herdr-nvim/connections.json"
@@ -48,6 +60,17 @@ local function normalize(c)
     }
 end
 
+--- Reject values that ssh (or herdr) could read as options or that could not
+--- be a host/session name. Returns an error message, or nil when valid.
+function M.validate(c)
+    if c.remote and (c.remote:sub(1, 1) == "-" or c.remote:find("[%s%c]")) then
+        return "invalid SSH target " .. vim.inspect(c.remote)
+    end
+    if c.session:sub(1, 1) == "-" or c.session:find("[%s%c/]") then
+        return "invalid session name " .. vim.inspect(c.session)
+    end
+end
+
 --- "host", "host:session", "local", "local:session".
 function M.parse(target)
     local host, session = target:match("^(.-):([^:@/]+)$")
@@ -56,6 +79,9 @@ function M.parse(target)
 end
 
 function M.label(c)
+    if not c then
+        return "not connected"
+    end
     local where = (c.remote or "local") .. ":" .. c.session
     return c.name and c.name ~= where and (c.name .. " (" .. where .. ")") or where
 end
@@ -64,22 +90,22 @@ function M.same(a, b)
     return a and b and a.remote == b.remote and a.session == b.session
 end
 
----@return table
+---@return table? the active connection
 function M.current()
-    return normalize({ name = M._current_name, remote = config.options.remote, session = config.options.session })
+    return M.active
 end
 
---- The connection to use at startup: setup()'s remote/session when given,
---- otherwise the last connection used, otherwise local.
-function M.initial(user_opts)
-    if user_opts and (user_opts.remote ~= nil or user_opts.session ~= nil) then
-        return normalize({ remote = user_opts.remote, session = user_opts.session })
+--- Profiles from setup(): `profiles`, plus `remote`/`session` as one more.
+local function config_profiles()
+    local o = config.options
+    local out = {}
+    if o.remote then
+        out[#out + 1] = { name = o.remote, remote = o.remote, session = o.session }
     end
-    local last = read_store().last
-    if last then
-        return normalize(last)
+    for _, p in ipairs(o.profiles or {}) do
+        out[#out + 1] = p
     end
-    return normalize({})
+    return out
 end
 
 --- Gather known connections asynchronously. cb(list)
@@ -88,23 +114,28 @@ function M.list(cb)
     local function add(c)
         c = normalize(c)
         local key = (c.remote or "") .. "\0" .. c.session
-        if not seen[key] then
+        if not seen[key] and not M.validate(c) then
             seen[key] = true
             out[#out + 1] = c
         end
     end
     local o = config.options
-    -- The active connection is always offered, even if it is not a profile.
-    add(vim.tbl_extend("force", M.current(), { source = "current" }))
+    if M.active then
+        add(vim.tbl_extend("force", M.active, { source = "current" }))
+    end
+    local store = read_store()
+    if store.last then
+        add(vim.tbl_extend("force", store.last, { source = "last" }))
+    end
+    for _, p in ipairs(config_profiles()) do
+        add(vim.tbl_extend("force", p, { source = "config" }))
+    end
+    for _, p in ipairs(store.profiles) do
+        add(vim.tbl_extend("force", p, { source = "saved" }))
+    end
     local has_local = vim.fn.executable(o.herdr_bin) == 1
     if has_local then
         add({ source = "local" })
-    end
-    for _, p in ipairs(o.profiles or {}) do
-        add(vim.tbl_extend("force", p, { source = "config" }))
-    end
-    for _, p in ipairs(read_store().profiles) do
-        add(vim.tbl_extend("force", p, { source = "saved" }))
     end
     if not has_local then
         return cb(out)
@@ -128,7 +159,7 @@ function M.list(cb)
 end
 
 function M.save(name, c)
-    c = normalize(c or M.current())
+    c = normalize(c or M.active or {})
     local data = read_store()
     data.profiles = vim.tbl_filter(function(p)
         return p.name ~= name
@@ -152,7 +183,7 @@ function M.saved_names()
     for _, p in ipairs(read_store().profiles) do
         names[#names + 1] = p.name
     end
-    for _, p in ipairs(config.options.profiles or {}) do
+    for _, p in ipairs(config_profiles()) do
         if p.name then
             names[#names + 1] = p.name
         end
@@ -166,25 +197,43 @@ local function remember_last(c)
     write_store(data)
 end
 
+local connected_waiters = {}
+
+--- Run fn once a connection is active; if there is none, ask for one first.
+function M.with_connection(fn)
+    if M.active then
+        return fn()
+    end
+    connected_waiters[#connected_waiters + 1] = fn
+    M.pick()
+end
+
 --- Switch to a connection: detach and close the old server's terminals,
 --- disconnect, then connect to the new one.
 function M.switch(c)
     c = normalize(c)
+    local err = M.validate(c)
+    if err then
+        connected_waiters = {}
+        return vim.notify("herdr: " .. err, vim.log.levels.ERROR)
+    end
     local state = require("herdr.state")
-    if M.same(c, M.current()) and require("herdr.transport").status ~= "failed" then
-        M._current_name = c.name or M._current_name
-        return state.start()
+    local transport = require("herdr.transport")
+    if not (M.same(c, M.active) and transport.status ~= "failed") then
+        if package.loaded["herdr.terminal"] then
+            require("herdr.terminal").close_all()
+        end
+        state.reset()
+        transport.shutdown()
     end
-    if package.loaded["herdr.terminal"] then
-        require("herdr.terminal").close_all()
-    end
-    state.reset()
-    require("herdr.transport").shutdown()
-    config.options.remote = c.remote
-    config.options.session = c.session
-    M._current_name = c.name
+    M.active = c
     remember_last(c)
     state.start()
+    local waiters = connected_waiters
+    connected_waiters = {}
+    for _, fn in ipairs(waiters) do
+        vim.schedule(fn)
+    end
 end
 
 function M.disconnect()
@@ -193,6 +242,8 @@ function M.disconnect()
     end
     require("herdr.state").reset()
     require("herdr.transport").shutdown()
+    M.active = nil
+    require("herdr.state").reset() -- re-render views as disconnected
 end
 
 --- Resolve "name", "host" or "host:session" to a connection. cb(conn)
@@ -207,17 +258,153 @@ function M.resolve(arg, cb)
     end)
 end
 
--- UI ---------------------------------------------------------------------------
+-- Project file ---------------------------------------------------------------
 
-local SOURCE_TAG = { current = "", ["local"] = "", config = "config", saved = "saved", herdr = "herdr machine" }
+--- Find the nearest project file at or above `dir`.
+function M.find_project(dir)
+    return vim.fs.find(M.PROJECT_FILE, { upward = true, path = dir or vim.fn.getcwd(), type = "file" })[1]
+end
 
-local function prompt_new(cb)
-    require("herdr.ui").input({ prompt = "SSH target (empty for local): " }, function(target)
-        if target == nil then
+--- Parse project file contents into a connection ({ profile = ... } or a
+--- connection). Returns nil and a reason when invalid.
+local function parse_project(content)
+    local ok, data = pcall(vim.json.decode, content or "", { luanil = { object = true, array = true } })
+    if not ok or type(data) ~= "table" then
+        return nil, "invalid JSON"
+    end
+    if data.profile then
+        return { profile = tostring(data.profile) }
+    end
+    local c = normalize({ name = data.name, remote = data.remote, session = data.session })
+    local err = M.validate(c)
+    if err then
+        return nil, err
+    end
+    return c
+end
+
+--- Trust status of a file in Neovim's trust database (the one 'exrc' and
+--- vim.secure use): "allowed" (and unchanged since), "denied", or "unknown".
+function M.trust_status(path)
+    local full = vim.uv.fs_realpath(path) or vim.fn.fnamemodify(path, ":p")
+    local f = io.open(full, "rb")
+    if not f then
+        return "unknown"
+    end
+    local hash = vim.fn.sha256(f:read("*a"))
+    f:close()
+    local db = io.open(vim.fn.stdpath("state") .. "/trust", "r")
+    if not db then
+        return "unknown"
+    end
+    local status = "unknown"
+    for line in db:lines() do
+        local h, p = line:match("^(%S+) (.+)$")
+        if p == full then
+            status = h == "!" and "denied" or (h == hash and "allowed" or "unknown")
+        end
+    end
+    db:close()
+    return status
+end
+
+--- Read a trusted project file into a connection. Returns nil and a reason
+--- when it is not trusted (Neovim asks, via vim.secure.read) or invalid.
+function M.read_project(path)
+    local content = vim.secure.read(path)
+    if not content then
+        return nil, "not trusted"
+    end
+    return parse_project(content)
+end
+
+--- Connect from a project file, if one applies. Never replaces an active
+--- connection; tells you when the project asks for a different one.
+--- Untrusted files are not read silently: you get a visible choice (trust and
+--- connect / not now / never), recorded in Neovim's trust database.
+function M.autoconnect(dir)
+    local path = M.find_project(dir)
+    if not path then
+        return
+    end
+    local trust = M.trust_status(path)
+    if trust == "denied" then
+        return
+    end
+    local f = io.open(path, "r")
+    local content = f and f:read("*a") or ""
+    if f then
+        f:close()
+    end
+    local c, err = parse_project(content)
+    if not c then
+        return vim.notify("herdr: " .. vim.fn.fnamemodify(path, ":~") .. ": " .. err, vim.log.levels.WARN)
+    end
+    local function go(conn)
+        if M.active then
+            if not M.same(conn, M.active) then
+                vim.notify(
+                    "herdr: "
+                        .. vim.fn.fnamemodify(path, ":~")
+                        .. " asks for "
+                        .. M.label(conn)
+                        .. "; use :Herdr connect to switch",
+                    vim.log.levels.INFO
+                )
+            end
             return
         end
-        require("herdr.ui").input({ prompt = "Herdr session: ", default = "main" }, function(session)
+        M.switch(conn)
+    end
+    local function connect()
+        if c.profile then
+            return M.resolve(c.profile, go)
+        end
+        go(c)
+    end
+    if trust == "allowed" then
+        return connect()
+    end
+    if M.active then
+        return -- don't interrupt an active connection with a trust prompt
+    end
+    local what = c.profile and ("profile '" .. c.profile .. "'") or M.label(c)
+    -- Defer so the prompt shows after startup UI (e.g. a dashboard) settles.
+    vim.defer_fn(function()
+        vim.ui.select({ "Trust and connect", "Not now", "Never (deny)" }, {
+            prompt = "herdr: " .. vim.fn.fnamemodify(path, ":~") .. " wants to connect to " .. what,
+        }, function(choice)
+            if choice == "Trust and connect" then
+                vim.secure.trust({ action = "allow", path = path })
+                connect()
+            elseif choice == "Never (deny)" then
+                vim.secure.trust({ action = "deny", path = path })
+            end
+        end)
+    end, 200)
+end
+
+-- UI ---------------------------------------------------------------------------
+
+local SOURCE_TAG = {
+    current = "",
+    last = "last used",
+    ["local"] = "",
+    config = "config",
+    saved = "saved",
+    herdr = "herdr machine",
+}
+
+local function prompt_new(cb)
+    local input = require("herdr.ui").input
+    input({ prompt = "SSH target (empty for local): " }, function(target)
+        if target == nil then
+            connected_waiters = {}
+            return
+        end
+        input({ prompt = "Herdr session: ", default = "main" }, function(session)
             if session == nil then
+                connected_waiters = {}
                 return
             end
             cb(normalize({ remote = vim.trim(target), session = vim.trim(session) }))
@@ -231,7 +418,9 @@ local function offer_save(c)
         function(name)
             if name and vim.trim(name) ~= "" then
                 M.save(vim.trim(name), c)
-                M._current_name = vim.trim(name)
+                if M.same(c, M.active) then
+                    M.active.name = vim.trim(name)
+                end
                 vim.notify("herdr: saved profile '" .. vim.trim(name) .. "'")
             end
         end
@@ -241,25 +430,34 @@ end
 --- `:Herdr connect` with no argument: pick a known connection or add one.
 function M.pick()
     M.list(function(list)
-        local current = M.current()
         local entries = {}
         for _, c in ipairs(list) do
             entries[#entries + 1] = c
         end
         entries[#entries + 1] = { new = true }
+        if M.active then
+            entries[#entries + 1] = { disconnect = true }
+        end
         vim.ui.select(entries, {
             prompt = "herdr: connect to",
             format_item = function(c)
                 if c.new then
                     return "+ New connection…"
+                elseif c.disconnect then
+                    return "× Disconnect"
                 end
                 local tag = SOURCE_TAG[c.source] or ""
-                local mark = M.same(c, current) and "● " or "  "
+                local mark = M.same(c, M.active) and "● " or "  "
                 return mark .. M.label(c) .. (tag ~= "" and ("  [" .. tag .. "]") or "")
             end,
         }, function(choice)
             if not choice then
+                connected_waiters = {}
                 return
+            end
+            if choice.disconnect then
+                connected_waiters = {}
+                return M.disconnect()
             end
             if choice.new then
                 return prompt_new(function(c)

@@ -346,6 +346,11 @@ local function open_select(opts)
 end
 
 function M.open(opts)
+    if not require("herdr.connection").active then
+        return require("herdr.connection").with_connection(function()
+            M.open(opts)
+        end)
+    end
     local ok = package.loaded["snacks"] and type(Snacks) == "table" and Snacks.picker and Snacks.picker.pick
     if ok then
         return open_snacks(opts)

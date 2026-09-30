@@ -114,6 +114,9 @@ function ensure_subscription(snapshot)
 end
 
 local function fetch()
+    if not require("herdr.connection").active then
+        return -- nothing to fetch until you connect
+    end
     if refreshing then
         refresh_again = true
         return

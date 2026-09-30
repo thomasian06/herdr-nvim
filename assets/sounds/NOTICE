@@ -1,0 +1,5 @@
+done.mp3 and request.mp3 are from Herdr (https://github.com/herdrdev/herdr),
+Copyright the Herdr authors, licensed under the Apache License, Version 2.0:
+https://www.apache.org/licenses/LICENSE-2.0
+
+They are included unmodified so herdr-nvim's notifications sound like Herdr's.

@@ -58,8 +58,8 @@ Other plugin managers: add `thomasian06/herdr-nvim` and call `require("herdr").s
 
 ```lua
 require("herdr").setup({
-  remote = nil, -- SSH target (e.g. "devbox"); nil = last connection used, else local
-  session = "main", -- Herdr session name
+  remote = nil, -- optional SSH target offered as a profile (nothing connects automatically)
+  session = "main", -- session for `remote`
   profiles = {}, -- e.g. { { name = "devbox", remote = "devbox", session = "main" } }
   auto_start = "ask", -- start a missing Herdr server: "ask" | true | false
   remote_attach = "auto", -- "auto" (local herdr via forwarded socket when possible) | "ssh"
@@ -70,6 +70,12 @@ require("herdr").setup({
     pick = "<leader>ap", -- spaces/agents picker
     connect = "<leader>ac", -- connect to a server/profile
   }, -- set a key (or all of `keymaps`) to false to disable
+  notify = {
+    enabled = true,
+    sound = "herdr", -- follow Herdr's [ui.sound] settings; true: always; false: never
+    message = true, -- also show a vim.notify message
+    on = { done = true, blocked = true },
+  },
   terminal = {
     double_esc = true, -- double-tap <Esc> leaves terminal mode; a single <Esc> reaches the agent
     auto_insert = true, -- entering a herdr terminal window enters terminal mode
@@ -103,18 +109,33 @@ require("herdr").setup({
 
 ## Connections
 
-One connection is active at a time; the tree's root line shows it.
-`:Herdr connect` (`<leader>ac`, or `C` in the tree) offers:
+Nothing connects on its own: open the tree and press `C`, or use `:Herdr connect` (`<leader>ac`).
+The picker offers:
 
-- the current connection and local Herdr
-- `profiles` from `setup()`
+- the current and last-used connection, and local Herdr
+- `profiles` (and `remote`/`session`) from `setup()`
 - Herdr's own saved machines (`herdr machine add ...`), so machines set up for Herdr work here too
 - profiles saved with `:Herdr save`
 - **New connection…**, which asks for an SSH target and session, then offers to save it
 
-Saved profiles and the last connection used live in `stdpath("data")/herdr-nvim/connections.json`.
-At startup herdr-nvim connects to `remote`/`session` from `setup()` when given, otherwise to the last connection used.
+Saved profiles live in `stdpath("data")/herdr-nvim/connections.json`.
 Switching detaches and closes the previous server's terminals.
+
+### Project file
+
+To connect automatically in a project, put a `.herdr-nvim.json` in it (or any parent directory):
+
+```json
+{ "remote": "devbox", "session": "main" }
+```
+
+or refer to a profile: `{ "profile": "devbox" }`.
+
+herdr-nvim connects when Neovim starts in that directory, or when you `:cd` into it while disconnected.
+It never switches away from an active connection; it tells you instead.
+The first time (and after the file changes) it asks: **Trust and connect**, **Not now**, or **Never**.
+The choice is kept in Neovim's trust database, the same one `'exrc'` and `vim.secure` use.
+SSH targets that could be read as `ssh` options (starting with `-`) are rejected.
 
 ## Tree
 
@@ -163,6 +184,29 @@ Stays live while open.
 | `<Tab>` then `<CR>` | Mark several spaces/terminals and open them all, tiled in a new tab |
 | `<C-v>` / `<C-s>` / `<C-t>` | Open in vsplit / split / tab |
 | `<A-f>` | Focus in Herdr's own UI |
+
+## Notifications
+
+Like Herdr itself, herdr-nvim rings when an agent needs input (becomes blocked) or finishes (goes from working to idle), and shows a notification such as "fix-login (codex) is done".
+It stays quiet for the agent in the window you are looking at while Neovim has focus.
+The sounds are Herdr's own, and Herdr's `[ui.sound]` settings in `~/.config/herdr/config.toml` (`enabled`, `path`, `done_path`, `request_path`) and `HERDR_DISABLE_SOUND` apply.
+Notifications work whenever you are connected, even with the tree closed.
+
+## bufferline.nvim
+
+To keep buffer tabs to the right of the tree (like with neo-tree or snacks' explorer), add an offset:
+
+```lua
+{
+  "akinsho/bufferline.nvim",
+  optional = true,
+  opts = function(_, opts)
+    opts.options = opts.options or {}
+    opts.options.offsets = opts.options.offsets or {}
+    table.insert(opts.options.offsets, { filetype = "herdr", text = "Herdr", highlight = "Directory", text_align = "left" })
+  end,
+}
+```
 
 ## Working in agent terminals
 

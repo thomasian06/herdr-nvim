@@ -33,7 +33,44 @@ function M.check()
         health.info("snacks.nvim not found (optional): picker falls back to vim.ui.select")
     end
 
-    health.start("herdr-nvim: connection " .. connection.label(c))
+    health.start("herdr-nvim: connection")
+    local project = connection.find_project()
+    if project then
+        local trusted = vim.secure.trust
+            and (function()
+                local ok, list = pcall(function()
+                    return vim.fn.readfile(vim.fn.stdpath("state") .. "/trust")
+                end)
+                local path = vim.fn.fnamemodify(project, ":p")
+                for _, line in ipairs(ok and list or {}) do
+                    if line:find(path, 1, true) then
+                        return true
+                    end
+                end
+                return false
+            end)()
+        health.info(
+            "project file: "
+                .. vim.fn.fnamemodify(project, ":~")
+                .. (trusted and " (trusted)" or " (not trusted yet; Neovim will ask on connect)")
+        )
+    else
+        health.info("no " .. connection.PROJECT_FILE .. " here; connect manually with :Herdr connect")
+    end
+    if not c then
+        health.info("not connected")
+        local local_herdr = vim.fn.executable(o.herdr_bin) == 1
+        if local_herdr then
+            health.ok("local herdr: " .. vim.trim(run({ o.herdr_bin, "--version" }).stdout or ""))
+        else
+            health.info("local herdr not installed (needed for a local server; recommended for remote)")
+        end
+        if vim.fn.executable("ssh") ~= 1 then
+            health.warn("ssh not found (needed for remote servers)")
+        end
+        return
+    end
+    health.info("connected to " .. connection.label(c))
     local local_herdr = vim.fn.executable(o.herdr_bin) == 1
     if local_herdr then
         local v = run({ o.herdr_bin, "--version" })

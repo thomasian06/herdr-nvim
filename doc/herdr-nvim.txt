@@ -34,8 +34,8 @@ Otherwise: >lua
 <
 Options (defaults shown):                                     *herdr-options* >lua
     require("herdr").setup({
-      remote = nil,            -- SSH target; nil = last used, else local
-      session = "main",        -- Herdr session name
+      remote = nil,            -- optional SSH target offered as a profile
+      session = "main",        -- session for `remote`
       profiles = {},           -- { { name = "devbox", remote = "devbox" } }
       auto_start = "ask",      -- start a missing server: "ask"|true|false
       remote_attach = "auto",  -- "auto" | "ssh" (see |herdr-requirements|)
@@ -46,6 +46,8 @@ Options (defaults shown):                                     *herdr-options* >l
         pick = "<leader>ap",
         connect = "<leader>ac",
       },
+      notify = { enabled = true, sound = "herdr", message = true,
+        on = { done = true, blocked = true } },
       terminal = {             -- double <Esc> -> normal mode, auto insert,
         double_esc = true, auto_insert = true, winbar = true, -- winbar
       },
@@ -126,20 +128,32 @@ terminals attached in this Neovim.
   <A-f>           focus in Herdr's own UI
   <Tab> <CR>      mark several items, then open them all tiled in a new tab
 
-==============================================================================
+=======================================================================================================================================================
 6. CONNECTIONS                                            *herdr-connections*
 
-One connection is active at a time; the tree's root line shows it.
-|:Herdr-connect| (<leader>ac, or `C` in the tree) offers the current
-connection, local Herdr, `profiles` from setup(), Herdr's own saved machines
+Nothing connects on its own. |:Herdr-connect| (<leader>ac, or `C` in the
+tree) offers the current and last-used connection, local Herdr, `profiles`
+(and `remote`/`session`) from setup(), Herdr's own saved machines
 (`herdr machine add`), profiles saved with |:Herdr-save|, and "New
-connection...".
+connection...". Saved profiles live in
+`stdpath("data")/herdr-nvim/connections.json`.
 
-Saved profiles and the last connection live in
-`stdpath("data")/herdr-nvim/connections.json`. At startup the plugin connects
-to setup()'s `remote`/`session` when given, else to the last connection used.
+                                                         *herdr-project-file*
+A `.herdr-nvim.json` in the working directory (or a parent) connects
+automatically when Neovim starts there, or after |:cd| while disconnected: >json
+    { "remote": "devbox", "session": "main" }
+<or `{ "profile": "devbox" }`. The first time (and after the file changes)
+you choose Trust and connect / Not now / Never; the choice is kept in
+Neovim's trust database (see |vim.secure|). It never replaces an active
+connection.
 
-==============================================================================
+                                                              *herdr-notify*
+When an agent needs input or finishes, herdr-nvim plays Herdr's sound and
+shows a notification (not for the agent in the focused window). Herdr's
+`[ui.sound]` settings and `HERDR_DISABLE_SOUND` apply. Configure with the
+`notify` option.
+
+=====
 7. REQUIREMENTS                                          *herdr-requirements*
 
 Local: Neovim 0.10+; OpenSSH with non-interactive access to the host for a
