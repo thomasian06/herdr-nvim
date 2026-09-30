@@ -35,6 +35,15 @@ M.defaults = {
         icons = nil, -- e.g. { agent = "A ", shell = "$ " }
         indent = nil, -- e.g. { vertical = "| ", middle = "|-", last = "`-" }
     },
+    -- Herdr terminal buffers.
+    terminal = {
+        -- Double-tap <Esc> to leave terminal mode; a single <Esc> still reaches the agent.
+        double_esc = true,
+        -- Enter terminal mode when entering a herdr terminal window.
+        auto_insert = true,
+        -- Show agent, name, status and space in each terminal window's winbar.
+        winbar = true,
+    },
     -- Debounce for re-fetching the session snapshot after server events (ms).
     refresh_debounce_ms = 80,
 }

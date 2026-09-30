@@ -70,6 +70,11 @@ require("herdr").setup({
     pick = "<leader>ap", -- spaces/agents picker
     connect = "<leader>ac", -- connect to a server/profile
   }, -- set a key (or all of `keymaps`) to false to disable
+  terminal = {
+    double_esc = true, -- double-tap <Esc> leaves terminal mode; a single <Esc> reaches the agent
+    auto_insert = true, -- entering a herdr terminal window enters terminal mode
+    winbar = true, -- status, agent, name and space above each terminal
+  },
   tree = { -- unset values are borrowed from your file explorer
     width = nil,
     position = nil, -- "left" | "right"
@@ -88,6 +93,7 @@ require("herdr").setup({
 | `:Herdr pick` | Spaces/agents picker (snacks.nvim; falls back to `vim.ui.select`) |
 | `:Herdr open <pane_id>` | Open a terminal, e.g. `:Herdr open w1:p1` |
 | `:Herdr refresh` | Re-fetch the session snapshot |
+| `:Herdr agents` | Open every agent in the session, tiled in a new tab |
 | `:Herdr connect [profile\|host[:session]]` | Connect to a server; without an argument, pick one |
 | `:Herdr disconnect` | Disconnect |
 | `:Herdr save [name]` | Save the current connection as a profile |
@@ -128,6 +134,7 @@ Herdr tabs are flattened: a tab with a single pane shows as that terminal, and o
 | `l` / `h` | Expand / collapse (or jump to parent) |
 | `s` `<C-v>` / `S` `<C-s>` / `t` `<C-t>` | Open in vsplit / split / new tab |
 | `T` | Open, taking over another `terminal attach` of that pane |
+| `O` | Open every terminal under the cursor, tiled in a new tab (on the root line: every agent) |
 | `a` | Add a terminal to the space under the cursor (on the root line: add a space) |
 | `A` | Add a space |
 | `r` | Rename |
@@ -151,8 +158,15 @@ Stays live while open.
 | Key | |
 | --- | --- |
 | `<CR>` | Open terminal (on a space: its focused terminal) |
+| `<Tab>` then `<CR>` | Mark several spaces/terminals and open them all, tiled in a new tab |
 | `<C-v>` / `<C-s>` / `<C-t>` | Open in vsplit / split / tab |
 | `<A-f>` | Focus in Herdr's own UI |
+
+## Working in agent terminals
+
+- Double-tap `<Esc>` to leave terminal mode (a single `<Esc>` still reaches the agent, e.g. to interrupt it). `<C-\><C-n>` works too.
+- Move between terminal windows with your usual window keys (`<C-h/j/k/l>` in LazyVim); entering a herdr terminal window puts you straight back into terminal mode.
+- Each terminal window's winbar shows its status, agent, name and space, so a grid of agents stays readable.
 
 ## Behavior to know about
 

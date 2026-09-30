@@ -107,8 +107,90 @@ local function target_window(how)
     return vim.api.nvim_get_current_win()
 end
 
+local config = require("herdr.config")
+local esc_timers = {} ---@type table<integer, uv.uv_timer_t>
+local cached_style ---@type table? resolved once; winbar() runs on every redraw
+
+--- Buffer-local terminal keys: double <Esc> leaves terminal mode (a single
+--- <Esc> is still sent to the agent immediately), like snacks.nvim terminals.
+local function setup_keys(buf)
+    if not config.options.terminal.double_esc then
+        return
+    end
+    vim.keymap.set("t", "<Esc>", function()
+        local timer = esc_timers[buf]
+        if not timer then
+            timer = assert(vim.uv.new_timer())
+            esc_timers[buf] = timer
+        end
+        if timer:is_active() then
+            timer:stop()
+            vim.cmd("stopinsert")
+            return ""
+        end
+        timer:start(200, 0, function() end)
+        return "<Esc>"
+    end, { buffer = buf, expr = true, desc = "Double <Esc>: normal mode" })
+end
+
+--- Winbar for herdr terminal windows: status, agent, name, space.
+function M.winbar()
+    local win = vim.g.statusline_winid or vim.api.nvim_get_current_win()
+    local buf = vim.api.nvim_win_get_buf(win)
+    local pane = state.pane(vim.b[buf].herdr_pane_id or "")
+    if not pane then
+        return " " .. (vim.b[buf].herdr_pane_id or "herdr")
+    end
+    cached_style = cached_style or require("herdr.style").get()
+    local style = cached_style
+    local st = state.status(pane.agent_status)
+    local agent = pane.display_agent or pane.agent
+    local ws = state.workspace(pane.workspace_id)
+    local tab = state.tab(pane.tab_id)
+    local name = state.pane_label(pane)
+    if tab and tab.label and not tab.label:match("^%d+$") and #state.tab_panes(tab.tab_id) == 1 then
+        name = tab.label
+    end
+    local esc = function(t)
+        return (t or ""):gsub("%%", "%%%%")
+    end
+    local parts = {
+        "%#" .. st.hl .. "# " .. st.icon .. " %*",
+        "%#"
+            .. (agent and "HerdrAgentIcon" or "HerdrShellIcon")
+            .. "#"
+            .. (agent and style.icons.agent or style.icons.shell)
+            .. "%*",
+        "%#HerdrFocused#" .. esc(name) .. "%*",
+    }
+    if agent then
+        parts[#parts + 1] = "%#HerdrMuted#  " .. esc(agent) .. "%*"
+    end
+    if pane.agent_status and pane.agent_status ~= "unknown" then
+        parts[#parts + 1] = "%#" .. st.hl .. "#  " .. pane.agent_status .. "%*"
+    end
+    parts[#parts + 1] = "%=%#HerdrMuted#" .. esc(ws and ws.label or pane.workspace_id) .. " %*"
+    return table.concat(parts)
+end
+
+--- Per-window decorations for a herdr terminal window.
+function M.decorate(win)
+    if config.options.terminal.winbar and vim.api.nvim_win_is_valid(win) then
+        require("herdr.style").define_highlights()
+        vim.wo[win][0].winbar = "%{%v:lua.require'herdr.terminal'.winbar()%}"
+    end
+end
+
+--- Buffer name: unique per pane, and ending in a readable label so tab and
+--- buffer lines (which show the last path component) say which agent it is.
 local function buf_name(pane)
-    return string.format("herdr://%s/%s", transport.describe(), pane.pane_id)
+    local label = state.pane_label(pane)
+    local tab = state.tab(pane.tab_id)
+    if tab and tab.label and not tab.label:match("^%d+$") and #state.tab_panes(tab.tab_id) <= 1 then
+        label = tab.label
+    end
+    label = label:gsub("[/\\]", "-")
+    return string.format("herdr://%s/%s/%s", transport.describe(), pane.pane_id, label)
 end
 
 local function start(buf, pane, takeover)
@@ -142,6 +224,7 @@ local function start(buf, pane, takeover)
     vim.b[buf].herdr_terminal_id = terminal_id
     pcall(vim.api.nvim_buf_set_name, buf, buf_name(pane))
     vim.bo[buf].buflisted = true
+    setup_keys(buf)
     vim.api.nvim_exec_autocmds("User", { pattern = "HerdrAttach", data = { buf = buf, pane_id = pane.pane_id } })
 end
 
@@ -191,7 +274,61 @@ function M.open(pane, opts)
         end
         start(buf, pane, opts.takeover)
     end
+    M.decorate(win)
     if opts.enter ~= false then
+        vim.cmd("startinsert")
+    end
+    return win
+end
+
+--- Open several panes tiled in a new tab (a grid of roughly square cells).
+---@param panes table[] pane objects
+function M.open_many(panes)
+    if #panes == 0 then
+        return vim.notify("herdr: nothing to open", vim.log.levels.INFO)
+    end
+    if #panes == 1 then
+        return M.open(panes[1], { how = "tab" })
+    end
+    vim.cmd("tabnew")
+    local scratch = vim.api.nvim_get_current_buf()
+    local cols = math.ceil(math.sqrt(#panes))
+    local rows = math.ceil(#panes / cols)
+    -- Build the columns, then split each column into rows.
+    local columns = { vim.api.nvim_get_current_win() }
+    for _ = 2, cols do
+        vim.api.nvim_set_current_win(columns[#columns])
+        vim.cmd("rightbelow vsplit")
+        columns[#columns + 1] = vim.api.nvim_get_current_win()
+    end
+    local cells = {}
+    for c, col_win in ipairs(columns) do
+        local in_col = math.min(rows, #panes - (c - 1) * rows)
+        vim.api.nvim_set_current_win(col_win)
+        cells[#cells + 1] = col_win
+        for _ = 2, in_col do
+            vim.cmd("rightbelow split")
+            cells[#cells + 1] = vim.api.nvim_get_current_win()
+        end
+    end
+    vim.cmd("wincmd =")
+    for i, pane in ipairs(panes) do
+        if cells[i] then
+            vim.api.nvim_set_current_win(cells[i])
+            M.open(pane, { how = "current", enter = false })
+        end
+    end
+    vim.api.nvim_set_current_win(cells[1])
+    -- Drop the empty buffer :tabnew created, now that terminals replaced it.
+    if
+        vim.api.nvim_buf_is_valid(scratch)
+        and vim.api.nvim_buf_get_name(scratch) == ""
+        and not vim.bo[scratch].modified
+        and #vim.fn.win_findbuf(scratch) == 0
+    then
+        pcall(vim.api.nvim_buf_delete, scratch, {})
+    end
+    if config.options.terminal.auto_insert then
         vim.cmd("startinsert")
     end
 end
@@ -231,8 +368,49 @@ function M.prune()
 end
 
 state.on_change(function()
-    vim.schedule(M.prune)
+    vim.schedule(function()
+        M.prune()
+        -- Statuses changed: repaint winbars.
+        if config.options.terminal.winbar then
+            pcall(vim.cmd, "redrawstatus!")
+        end
+    end)
 end)
+
+local term_group = vim.api.nvim_create_augroup("herdr_terminal_ui", { clear = true })
+vim.api.nvim_create_autocmd("BufWinEnter", {
+    group = term_group,
+    pattern = "herdr://*",
+    callback = function(ev)
+        if vim.b[ev.buf].herdr_terminal_id then
+            M.decorate(vim.api.nvim_get_current_win())
+        end
+    end,
+})
+vim.api.nvim_create_autocmd({ "BufEnter", "WinEnter" }, {
+    group = term_group,
+    pattern = "herdr://*",
+    callback = function(ev)
+        if config.options.terminal.auto_insert and vim.b[ev.buf].herdr_terminal_id and is_live(ev.buf) then
+            vim.schedule(function()
+                if vim.api.nvim_get_current_buf() == ev.buf and vim.fn.mode() ~= "t" then
+                    vim.cmd("startinsert")
+                end
+            end)
+        end
+    end,
+})
+vim.api.nvim_create_autocmd("BufWipeout", {
+    group = term_group,
+    pattern = "herdr://*",
+    callback = function(ev)
+        local timer = esc_timers[ev.buf]
+        if timer then
+            esc_timers[ev.buf] = nil
+            timer:close()
+        end
+    end,
+})
 vim.api.nvim_create_autocmd("User", {
     group = vim.api.nvim_create_augroup("herdr_terminal", { clear = true }),
     pattern = "HerdrDetach",

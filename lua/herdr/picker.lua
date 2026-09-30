@@ -192,6 +192,31 @@ local function open_snacks(opts)
         sort = { fields = { "score:desc", "idx" } },
         matcher = { sort_empty = false },
         confirm = function(p, item)
+            -- Several items marked with <Tab>: open them all, tiled.
+            local selected = p:selected()
+            if #selected > 1 then
+                local panes, seen = {}, {}
+                for _, it in ipairs(selected) do
+                    local list = it.kind == "pane" and { it.pane } or {}
+                    if it.kind == "space" then
+                        for _, sp in ipairs(state.snapshot and state.snapshot.panes or {}) do
+                            if sp.workspace_id == it.workspace_id then
+                                list[#list + 1] = sp
+                            end
+                        end
+                    end
+                    for _, pn in ipairs(list) do
+                        if not seen[pn.pane_id] then
+                            seen[pn.pane_id] = true
+                            panes[#panes + 1] = pn
+                        end
+                    end
+                end
+                p:close()
+                return vim.schedule(function()
+                    terminal.open_many(panes)
+                end)
+            end
             local pane = item_pane(item)
             p:close()
             if pane then

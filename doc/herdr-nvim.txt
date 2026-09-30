@@ -46,6 +46,9 @@ Options (defaults shown):                                     *herdr-options* >l
         pick = "<leader>ap",
         connect = "<leader>ac",
       },
+      terminal = {             -- double <Esc> -> normal mode, auto insert,
+        double_esc = true, auto_insert = true, winbar = true, -- winbar
+      },
       tree = {                 -- unset values borrowed from your explorer
         width = nil, position = nil, icons = nil, indent = nil,
       },
@@ -69,6 +72,9 @@ explorer or neo-tree when present.
 
 :Herdr refresh                                               *:Herdr-refresh*
     Re-fetch the session snapshot.
+
+:Herdr agents                                                 *:Herdr-agents*
+    Open every agent in the session, tiled in a new tab.
 
 :Herdr connect [{profile}|{host}[:{session}]]                *:Herdr-connect*
     Connect to a server. Without an argument, pick one (|herdr-connections|).
@@ -94,6 +100,8 @@ with split panes becomes a nested group.
   S <C-s>         open in horizontal split
   t <C-t>         open in new tab
   T               open, taking over another attach of that pane
+  O               open every terminal under the cursor, tiled in a new tab
+                  (on the root line: every agent)
   a               add a terminal to the space under the cursor
                   (on the root line: add a space)
   A               add a space
@@ -116,6 +124,7 @@ terminals attached in this Neovim.
   <C-v> <C-s>     open in vertical / horizontal split
   <C-t>           open in new tab
   <A-f>           focus in Herdr's own UI
+  <Tab> <CR>      mark several items, then open them all tiled in a new tab
 
 ==============================================================================
 6. CONNECTIONS                                            *herdr-connections*
@@ -157,6 +166,9 @@ Run `:checkhealth herdr` to check the current connection.
 - Closing the terminal buffer detaches. `Ctrl-B q` in the terminal also
   detaches.
 - Terminal buffers of panes closed in Herdr are removed automatically.
+- In a herdr terminal, double-tap <Esc> for normal mode (a single <Esc>
+  reaches the agent). Entering a herdr terminal window enters terminal mode.
+  Each terminal window's winbar shows status, agent, name and space.
 
 ==============================================================================
 9. EVENTS                                                      *herdr-events*

@@ -22,6 +22,9 @@ local subcommands = {
     refresh = function()
         require("herdr").refresh()
     end,
+    agents = function()
+        require("herdr").agents()
+    end,
     connect = function(args)
         local connection = require("herdr.connection")
         if not args[1] then

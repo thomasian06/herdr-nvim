@@ -289,6 +289,34 @@ function actions.open(how, takeover)
     end
 end
 
+--- `O`: open every terminal under the node, tiled in a new tab. On the root:
+--- every agent in the session.
+function actions.open_all()
+    local node = current_node()
+    if not node then
+        return
+    end
+    local panes = {}
+    if node.kind == "root" then
+        for _, p in ipairs(state.snapshot and state.snapshot.panes or {}) do
+            if p.agent then
+                panes[#panes + 1] = p
+            end
+        end
+    else
+        local function collect(n)
+            if n.kind == "pane" then
+                panes[#panes + 1] = n.pane
+            end
+            for _, c in ipairs(n.children or {}) do
+                collect(c)
+            end
+        end
+        collect(node)
+    end
+    terminal.open_many(panes)
+end
+
 function actions.expand()
     local node = current_node()
     if not node or node.kind == "root" then
@@ -435,6 +463,7 @@ local HELP = {
     { "S <C-s>", "open in horizontal split" },
     { "t <C-t>", "open in new tab" },
     { "T", "open, taking over another attach" },
+    { "O", "open all terminals here, tiled (root: all agents)" },
     { "a", "add terminal to space (on root: add space)" },
     { "A", "add space" },
     { "r", "rename" },
@@ -497,6 +526,7 @@ local function setup_buffer()
     map({ "S", "<C-s>" }, actions.open("split"))
     map({ "t", "<C-t>" }, actions.open("tab"))
     map("T", actions.open("current", true))
+    map("O", actions.open_all)
     map("a", actions.add)
     map("A", actions.add_space)
     map("r", actions.rename)

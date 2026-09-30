@@ -86,6 +86,34 @@ function M.open(pane_id, opts)
     state.start()
 end
 
+--- Open every agent in the session, tiled in a new tab.
+function M.agents()
+    local state = require("herdr.state")
+    local function go()
+        local panes = {}
+        for _, p in ipairs(state.snapshot.panes or {}) do
+            if p.agent then
+                panes[#panes + 1] = p
+            end
+        end
+        require("herdr.terminal").open_many(panes)
+    end
+    if state.snapshot then
+        return go()
+    end
+    local off
+    off = state.on_change(function(snap, err)
+        if snap then
+            off()
+            vim.schedule(go)
+        elseif err then
+            off()
+            vim.notify("herdr: " .. err, vim.log.levels.ERROR)
+        end
+    end)
+    state.start()
+end
+
 --- Pick a space/agent (snacks.picker with live preview; vim.ui.select fallback).
 function M.pick(opts)
     require("herdr.picker").open(opts)
