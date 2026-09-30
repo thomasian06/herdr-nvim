@@ -46,6 +46,17 @@ function M.detach_all()
     end
 end
 
+--- Detach and remove every herdr terminal buffer (e.g. when switching servers).
+function M.close_all()
+    M.detach_all()
+    for terminal_id, buf in pairs(M.buffers) do
+        M.buffers[terminal_id] = nil
+        if vim.api.nvim_buf_is_valid(buf) then
+            M.remove_buffer(buf)
+        end
+    end
+end
+
 --- Buffers currently attached, keyed by pane_id.
 function M.attached_panes()
     local out = {}
@@ -102,10 +113,11 @@ end
 
 local function start(buf, pane, takeover)
     local terminal_id = pane.terminal_id
-    local cmd, cleanup = transport.attach_cmd(terminal_id, takeover)
+    local cmd, cleanup, env = transport.attach_cmd(terminal_id, takeover)
     vim.api.nvim_buf_call(buf, function()
         vim.fn.jobstart(cmd, {
             term = true,
+            env = env,
             on_exit = function(_, code)
                 vim.schedule(function()
                     cleanup()
@@ -185,7 +197,7 @@ function M.open(pane, opts)
 end
 
 --- Remove a buffer without closing the windows showing it.
-local function remove_buffer(buf)
+function M.remove_buffer(buf)
     if package.loaded["snacks"] and Snacks and Snacks.bufdelete then
         return Snacks.bufdelete({ buf = buf, force = true })
     end
@@ -213,7 +225,7 @@ function M.prune()
             M.buffers[terminal_id] = nil
         elseif not is_live(buf) and not state.pane(vim.b[buf].herdr_pane_id or "") then
             M.buffers[terminal_id] = nil
-            remove_buffer(buf)
+            M.remove_buffer(buf)
         end
     end
 end

@@ -24,10 +24,21 @@ for _, mod in ipairs({
     "herdr.terminal",
     "herdr.tree",
     "herdr.picker",
+    "herdr.connection",
+    "herdr.health",
 }) do
     local ok, err = pcall(require, mod)
     check("require " .. mod, ok, not ok and tostring(err) or nil)
 end
+
+local connection = require("herdr.connection")
+local function same(a, b)
+    return a.remote == b.remote and a.session == b.session
+end
+check("parse host", same(connection.parse("devbox"), { remote = "devbox", session = "main" }))
+check("parse host:session", same(connection.parse("devbox:agents"), { remote = "devbox", session = "agents" }))
+check("parse user@host", same(connection.parse("me@devbox"), { remote = "me@devbox", session = "main" }))
+check("parse local", same(connection.parse("local"), { remote = nil, session = "main" }))
 
 require("herdr").setup({ herdr_bin = "herdr-nvim-test-missing-binary" })
 check("command :Herdr", vim.fn.exists(":Herdr") == 2)

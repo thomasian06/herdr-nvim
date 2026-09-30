@@ -8,8 +8,10 @@ CONTENTS                                                     *herdr-contents*
   3. Commands ............................................ |herdr-commands|
   4. Tree ................................................ |herdr-tree|
   5. Picker .............................................. |herdr-picker|
-  6. Behavior ............................................ |herdr-behavior|
-  7. Events .............................................. |herdr-events|
+  6. Connections ......................................... |herdr-connections|
+  7. Requirements ........................................ |herdr-requirements|
+  8. Behavior ............................................ |herdr-behavior|
+  9. Events .............................................. |herdr-events|
 
 ==============================================================================
 1. INTRODUCTION                                                 *herdr-intro*
@@ -32,13 +34,17 @@ Otherwise: >lua
 <
 Options (defaults shown):                                     *herdr-options* >lua
     require("herdr").setup({
-      remote = nil,            -- SSH target; nil = local Herdr server
+      remote = nil,            -- SSH target; nil = last used, else local
       session = "main",        -- Herdr session name
+      profiles = {},           -- { { name = "devbox", remote = "devbox" } }
+      auto_start = "ask",      -- start a missing server: "ask"|true|false
+      remote_attach = "auto",  -- "auto" | "ssh" (see |herdr-requirements|)
       herdr_bin = "herdr",     -- local herdr binary
       remote_path = { "$HOME/.local/bin" }, -- prepended to PATH remotely
       keymaps = {              -- false disables a key (or all of them)
         toggle = "<leader>aa",
         pick = "<leader>ap",
+        connect = "<leader>ac",
       },
       tree = {                 -- unset values borrowed from your explorer
         width = nil, position = nil, icons = nil, indent = nil,
@@ -64,6 +70,18 @@ explorer or neo-tree when present.
 :Herdr refresh                                               *:Herdr-refresh*
     Re-fetch the session snapshot.
 
+:Herdr connect [{profile}|{host}[:{session}]]                *:Herdr-connect*
+    Connect to a server. Without an argument, pick one (|herdr-connections|).
+
+:Herdr disconnect                                         *:Herdr-disconnect*
+    Disconnect.
+
+:Herdr save [{name}]                                           *:Herdr-save*
+    Save the current connection as a profile.
+
+:Herdr forget {name}                                         *:Herdr-forget*
+    Remove a saved profile.
+
 ==============================================================================
 4. TREE                                                          *herdr-tree*
 
@@ -82,6 +100,7 @@ with split panes becomes a nested group.
   r               rename
   d               close in Herdr (asks for confirmation)
   f               focus in Herdr's own UI
+  C               connect to another server/profile
   z Z             collapse all
   R u             refresh
   q               close the tree
@@ -99,7 +118,38 @@ terminals attached in this Neovim.
   <A-f>           focus in Herdr's own UI
 
 ==============================================================================
-6. BEHAVIOR                                                  *herdr-behavior*
+6. CONNECTIONS                                            *herdr-connections*
+
+One connection is active at a time; the tree's root line shows it.
+|:Herdr-connect| (<leader>ac, or `C` in the tree) offers the current
+connection, local Herdr, `profiles` from setup(), Herdr's own saved machines
+(`herdr machine add`), profiles saved with |:Herdr-save|, and "New
+connection...".
+
+Saved profiles and the last connection live in
+`stdpath("data")/herdr-nvim/connections.json`. At startup the plugin connects
+to setup()'s `remote`/`session` when given, else to the last connection used.
+
+==============================================================================
+7. REQUIREMENTS                                          *herdr-requirements*
+
+Local: Neovim 0.10+; OpenSSH with non-interactive access to the host for a
+remote server; Herdr (required for a local server, recommended for remote);
+optionally snacks.nvim and a Nerd Font.
+
+Remote: Herdr on PATH or in `remote_path`, a server for the session (the
+plugin can start it), and SSH unix-socket forwarding allowed.
+
+Remote servers use one SSH connection. Both sockets are forwarded and
+terminals attach with the local herdr through the forwarded client socket.
+Without a compatible local herdr, terminals run `herdr terminal attach` on the
+remote instead: one SSH session per open terminal (OpenSSH allows 10 by
+default, `MaxSessions`).
+
+Run `:checkhealth herdr` to check the current connection.
+
+==============================================================================
+8. BEHAVIOR                                                  *herdr-behavior*
 
 - Herdr allows one `terminal attach` client per pane. Opening a pane that is
   attached elsewhere offers to take it over. Herdr's own UI does not count.
@@ -109,7 +159,7 @@ terminals attached in this Neovim.
 - Terminal buffers of panes closed in Herdr are removed automatically.
 
 ==============================================================================
-7. EVENTS                                                      *herdr-events*
+9. EVENTS                                                      *herdr-events*
 
 `User HerdrAttach` and `User HerdrDetach` fire with `data = { buf, pane_id }`.
 

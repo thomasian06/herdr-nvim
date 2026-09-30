@@ -10,6 +10,7 @@ local function set_keymaps()
     local defs = {
         { keys.toggle, "<cmd>Herdr toggle<cr>", "Herdr tree" },
         { keys.pick, "<cmd>Herdr pick<cr>", "Herdr pick space/agent" },
+        { keys.connect, "<cmd>Herdr connect<cr>", "Herdr connect" },
     }
     for _, d in ipairs(defs) do
         if d[1] then
@@ -36,6 +37,11 @@ end
 
 function M.setup(opts)
     config.setup(opts)
+    -- Start on setup()'s remote/session when given, else the last connection used.
+    local initial = require("herdr.connection").initial(opts)
+    config.options.remote = initial.remote
+    config.options.session = initial.session
+    require("herdr.connection")._current_name = initial.name
     set_keymaps()
     vim.api.nvim_create_autocmd("VimLeavePre", {
         group = vim.api.nvim_create_augroup("herdr_transport", { clear = true }),

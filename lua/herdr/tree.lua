@@ -13,7 +13,6 @@ local api = require("herdr.api")
 local state = require("herdr.state")
 local style_mod = require("herdr.style")
 local terminal = require("herdr.terminal")
-local transport = require("herdr.transport")
 
 local M = {}
 
@@ -149,7 +148,8 @@ local function render()
     end
 
     local root = build()
-    local root_text = style.icons.root .. transport.describe()
+    local connection = require("herdr.connection")
+    local root_text = style.icons.root .. connection.label(connection.current())
     add(root_text, root, { { 0, #root_text, "HerdrRoot" } })
 
     if state.error then
@@ -440,6 +440,7 @@ local HELP = {
     { "r", "rename" },
     { "d", "close in herdr" },
     { "f", "focus in herdr's own UI" },
+    { "C", "connect to another server/profile" },
     { "z Z", "collapse all" },
     { "R u", "refresh" },
     { "q", "close tree" },
@@ -501,6 +502,9 @@ local function setup_buffer()
     map("r", actions.rename)
     map("d", actions.delete)
     map("f", actions.focus_in_herdr)
+    map("C", function()
+        require("herdr.connection").pick()
+    end)
     map({ "z", "Z" }, actions.collapse_all)
     map({ "R", "u" }, state.refresh)
     map("q", function()

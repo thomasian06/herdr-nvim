@@ -20,6 +20,7 @@ local refreshing, refresh_again = false, false
 local sub, sub_key
 local retry_timer
 local active = false
+local epoch = 0 -- bumps on reset; responses from an older epoch are dropped
 
 local GLOBAL_EVENTS = {
     "workspace.created",
@@ -48,7 +49,7 @@ local function emit()
     for _, fn in ipairs(listeners) do
         local ok, err = pcall(fn, M.snapshot, M.error)
         if not ok then
-            vim.notify("herdr.nvim listener error: " .. tostring(err), vim.log.levels.ERROR)
+            vim.notify("herdr-nvim listener error: " .. tostring(err), vim.log.levels.ERROR)
         end
     end
 end
@@ -93,10 +94,13 @@ function ensure_subscription(snapshot)
         subs[#subs + 1] = { type = "pane.agent_status_changed", pane_id = p.pane_id }
     end
     local this
+    local my_epoch = epoch
     this = api.subscribe(subs, function()
-        M.refresh()
+        if my_epoch == epoch then
+            M.refresh()
+        end
     end, function(err)
-        if sub ~= this then
+        if sub ~= this or my_epoch ~= epoch then
             return -- replaced or closed on purpose
         end
         sub, sub_key = nil, nil
@@ -115,7 +119,11 @@ local function fetch()
         return
     end
     refreshing = true
+    local my_epoch = epoch
     api.request("session.snapshot", nil, function(err, result)
+        if my_epoch ~= epoch then
+            return -- from a connection that has since been replaced
+        end
         refreshing = false
         if err then
             M.error = err
@@ -174,6 +182,26 @@ function M.stop()
         sub = nil
         old.close()
     end
+end
+
+--- Forget the current session entirely (e.g. before switching servers).
+function M.reset()
+    M.stop()
+    sub_key = nil
+    if refresh_timer then
+        refresh_timer:stop()
+    end
+    if retry_timer then
+        pcall(function()
+            retry_timer:stop()
+        end)
+        retry_timer = nil
+    end
+    epoch = epoch + 1
+    refreshing, refresh_again = false, false
+    M.snapshot = nil
+    M.error = nil
+    emit()
 end
 
 -- Lookup helpers ------------------------------------------------------------

@@ -6,10 +6,22 @@ M.defaults = {
     remote = nil,
     -- Herdr session name.
     session = "main",
+    -- Named connections offered by `:Herdr connect`, e.g.
+    -- { { name = "devbox", remote = "devbox", session = "main" } }.
+    -- Herdr's saved machines and profiles saved with `:Herdr save` are offered too.
+    profiles = {},
+    -- Start the Herdr server when it is not running: "ask" | true | false.
+    auto_start = "ask",
+    -- How terminals attach to a remote server:
+    --   "auto"  local `herdr` through the forwarded socket when it is installed
+    --           and protocol-compatible, else run `herdr` on the remote
+    --   "ssh"   always run `herdr terminal attach` on the remote
+    remote_attach = "auto",
     -- Default keymaps. Set any to false (or `keymaps = false`) to disable.
     keymaps = {
         toggle = "<leader>aa", -- toggle the herdr tree
         pick = "<leader>ap", -- spaces/agents picker
+        connect = "<leader>ac", -- connect to a server/profile
     },
     -- Herdr binary for local mode.
     herdr_bin = "herdr",
