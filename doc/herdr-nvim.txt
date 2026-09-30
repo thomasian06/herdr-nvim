@@ -1,0 +1,116 @@
+*herdr-nvim.txt*  Herdr sessions in Neovim: explorer-style tree and picker
+
+==============================================================================
+CONTENTS                                                     *herdr-contents*
+
+  1. Introduction ........................................ |herdr-intro|
+  2. Setup ............................................... |herdr-setup|
+  3. Commands ............................................ |herdr-commands|
+  4. Tree ................................................ |herdr-tree|
+  5. Picker .............................................. |herdr-picker|
+  6. Behavior ............................................ |herdr-behavior|
+  7. Events .............................................. |herdr-events|
+
+==============================================================================
+1. INTRODUCTION                                                 *herdr-intro*
+
+herdr-nvim is a client for a Herdr (https://herdr.dev) session. Spaces show
+as folders and terminals/agents as files, with live agent status. Any
+terminal opens as a Neovim |:terminal| via `herdr terminal attach`.
+
+Herdr keeps running the agents; Neovim is just another client. The server can
+be local or on a remote machine reached over SSH.
+
+==============================================================================
+2. SETUP                                                        *herdr-setup*
+
+lazy.nvim: >lua
+    { "thomasian06/herdr-nvim", opts = { remote = "devbox" } }
+<
+Otherwise: >lua
+    require("herdr").setup({})
+<
+Options (defaults shown):                                     *herdr-options* >lua
+    require("herdr").setup({
+      remote = nil,            -- SSH target; nil = local Herdr server
+      session = "main",        -- Herdr session name
+      herdr_bin = "herdr",     -- local herdr binary
+      remote_path = { "$HOME/.local/bin" }, -- prepended to PATH remotely
+      keymaps = {              -- false disables a key (or all of them)
+        toggle = "<leader>aa",
+        pick = "<leader>ap",
+      },
+      tree = {                 -- unset values borrowed from your explorer
+        width = nil, position = nil, icons = nil, indent = nil,
+      },
+    })
+<
+The tree borrows icons, indent guides, width and side from snacks.nvim's
+explorer or neo-tree when present.
+
+==============================================================================
+3. COMMANDS                                                  *herdr-commands*
+
+:Herdr [toggle]                                        *:Herdr* *:Herdr-toggle*
+    Toggle the tree.
+
+:Herdr pick                                                     *:Herdr-pick*
+    Spaces/agents picker. Uses snacks.nvim when installed (with a live
+    preview of each terminal's screen), otherwise |vim.ui.select()|.
+
+:Herdr open {pane_id}                                           *:Herdr-open*
+    Open a terminal, e.g. `:Herdr open w1:p1`.
+
+:Herdr refresh                                               *:Herdr-refresh*
+    Re-fetch the session snapshot.
+
+==============================================================================
+4. TREE                                                          *herdr-tree*
+
+Herdr tabs are flattened: a tab with one pane shows as that terminal; a tab
+with split panes becomes a nested group.
+
+  <CR> o          open terminal / toggle space
+  l h             expand / collapse (or jump to parent)
+  s <C-v>         open in vertical split
+  S <C-s>         open in horizontal split
+  t <C-t>         open in new tab
+  T               open, taking over another attach of that pane
+  a               add a terminal to the space under the cursor
+                  (on the root line: add a space)
+  A               add a space
+  r               rename
+  d               close in Herdr (asks for confirmation)
+  f               focus in Herdr's own UI
+  z Z             collapse all
+  R u             refresh
+  q               close the tree
+  ?               help
+
+Status icons: `●` working, `!` blocked, `✓` done, `○` idle. `↗` marks
+terminals attached in this Neovim.
+
+==============================================================================
+5. PICKER                                                      *herdr-picker*
+
+  <CR>            open terminal (on a space: its focused terminal)
+  <C-v> <C-s>     open in vertical / horizontal split
+  <C-t>           open in new tab
+  <A-f>           focus in Herdr's own UI
+
+==============================================================================
+6. BEHAVIOR                                                  *herdr-behavior*
+
+- Herdr allows one `terminal attach` client per pane. Opening a pane that is
+  attached elsewhere offers to take it over. Herdr's own UI does not count.
+- While attached, Herdr sizes the pane to the Neovim window.
+- Closing the terminal buffer detaches. `Ctrl-B q` in the terminal also
+  detaches.
+- Terminal buffers of panes closed in Herdr are removed automatically.
+
+==============================================================================
+7. EVENTS                                                      *herdr-events*
+
+`User HerdrAttach` and `User HerdrDetach` fire with `data = { buf, pane_id }`.
+
+ vim:tw=78:ts=8:ft=help:norl:

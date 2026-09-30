@@ -1,0 +1,88 @@
+local config = require("herdr.config")
+
+local M = {}
+
+local function set_keymaps()
+    local keys = config.options.keymaps
+    if not keys then
+        return
+    end
+    local defs = {
+        { keys.toggle, "<cmd>Herdr toggle<cr>", "Herdr tree" },
+        { keys.pick, "<cmd>Herdr pick<cr>", "Herdr pick space/agent" },
+    }
+    for _, d in ipairs(defs) do
+        if d[1] then
+            vim.keymap.set("n", d[1], d[2], { desc = d[3], silent = true })
+        end
+    end
+    -- Label the shared prefix in which-key when both keys share one (e.g. <leader>a).
+    local a, b = keys.toggle, keys.pick
+    if not (a and b and #a == #b and #a > 1 and a:sub(1, -2) == b:sub(1, -2)) then
+        return
+    end
+    local function label()
+        local wk = package.loaded["which-key"]
+        if wk and wk.add then
+            wk.add({ { a:sub(1, -2), group = "herdr" } })
+            return true
+        end
+    end
+    -- Don't force-load which-key; label it now if loaded, else once lazy.nvim is done.
+    if not label() then
+        vim.api.nvim_create_autocmd("User", { pattern = "VeryLazy", once = true, callback = label })
+    end
+end
+
+function M.setup(opts)
+    config.setup(opts)
+    set_keymaps()
+    vim.api.nvim_create_autocmd("VimLeavePre", {
+        group = vim.api.nvim_create_augroup("herdr_transport", { clear = true }),
+        callback = function()
+            if package.loaded["herdr.terminal"] then
+                require("herdr.terminal").detach_all()
+            end
+            require("herdr.transport").shutdown()
+        end,
+    })
+end
+
+--- Toggle the herdr tree.
+function M.toggle()
+    require("herdr.tree").toggle()
+end
+
+function M.open_tree()
+    require("herdr.tree").open()
+end
+
+function M.refresh()
+    require("herdr.state").refresh()
+end
+
+--- Open a pane by id (e.g. "w1:p1").
+function M.open(pane_id, opts)
+    local state = require("herdr.state")
+    local function go()
+        require("herdr.terminal").open(pane_id, opts)
+    end
+    if state.snapshot then
+        return go()
+    end
+    local off
+    off = state.on_change(function(snap)
+        if snap then
+            off()
+            vim.schedule(go)
+        end
+    end)
+    state.start()
+end
+
+--- Pick a space/agent (snacks.picker with live preview; vim.ui.select fallback).
+function M.pick(opts)
+    require("herdr.picker").open(opts)
+end
+
+return M
