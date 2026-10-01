@@ -1,0 +1,17 @@
+logo.svg and logo.png combine two third-party marks:
+
+- The ram is the Herdr logo (assets/logo.svg in https://github.com/herdrdev/herdr),
+  Copyright the Herdr authors, licensed under the Apache License, Version 2.0:
+  https://www.apache.org/licenses/LICENSE-2.0
+  Modifications: recolored with a Neovim-style green-to-blue gradient, its
+  ">_" eye replaced by the Neovim mark, on a dark rounded tile.
+
+- The "N" is the Neovim logo mark by Jason Long (https://neovim.io), licensed
+  under Creative Commons Attribution 3.0:
+  https://creativecommons.org/licenses/by/3.0/
+  Modifications: scaled, filled in a single color, and cut out of the ram as
+  its eye.
+
+These marks belong to their owners. herdr-nvim is not affiliated with or
+endorsed by Herdr or the Neovim project. The sounds in sounds/ are covered by
+sounds/NOTICE.

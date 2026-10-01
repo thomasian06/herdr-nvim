@@ -1,4 +1,13 @@
-# herdr-nvim
+<p align="center">
+  <img src="assets/logo.svg" alt="herdr-nvim logo: the Herdr ram in Neovim colors, with the Neovim N as its eye" width="128" height="128">
+</p>
+
+<h1 align="center">herdr-nvim</h1>
+
+<p align="center">Your <a href="https://herdr.dev">Herdr</a> agents, in Neovim.</p>
+
+> [!NOTE]
+> **Unaffiliated project.** herdr-nvim is an independent, community-built Neovim plugin. It is not affiliated with, endorsed by, or supported by Herdr, herdr.dev, or the Neovim project. "Herdr" and "Neovim" are named only to describe what this plugin works with.
 
 Use a [Herdr](https://herdr.dev) session from Neovim like a file tree.
 Spaces are folders and terminals/agents are files, with live agent status, and any terminal opens as a Neovim `:terminal`.
@@ -334,3 +343,11 @@ Everything is downloaded into `.tests/` and verified against the lock.
 CI runs the full sweep on Linux and macOS, plus Neovim nightly as a non-blocking early warning.
 
 To try the plugin in isolation: `nvim -u tests/minimal_init.lua` (set `HERDR_REMOTE` for a remote server).
+
+## License
+
+herdr-nvim is MIT licensed.
+Some assets come from other projects:
+
+- The logo combines Herdr's ram (Apache License 2.0) with the Neovim logo mark by Jason Long (CC BY 3.0); see `assets/NOTICE`.
+- The notification sounds in `assets/sounds/` are Herdr's, used unmodified under the Apache License 2.0; see `assets/sounds/NOTICE`.
