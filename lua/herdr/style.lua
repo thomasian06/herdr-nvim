@@ -20,7 +20,7 @@ local DEFAULTS = {
         group_closed = "󰓩 ", -- a herdr tab holding split panes
         group_open = "󰓩 ",
         agent = "󰚩 ",
-        shell = " ",
+        shell = "󰆍 ", -- a plain terminal: no agent detected
         attached = "↗",
     },
     hl = {

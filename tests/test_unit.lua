@@ -25,6 +25,26 @@ T["connection"]["validate rejects ssh option injection"] = function()
     eq(c.validate({ session = "main", projects_dir = "~/projects" }), nil)
 end
 
+T["connect() without a target opens the picker"] = function()
+    local connection = require("herdr.connection")
+    local orig_pick, orig_resolve = connection.pick, connection.resolve
+    local picked, resolved = 0, {}
+    connection.pick = function()
+        picked = picked + 1
+    end
+    connection.resolve = function(target)
+        resolved[#resolved + 1] = target
+    end
+    local ok, err = pcall(function()
+        require("herdr").connect()
+        require("herdr").connect("")
+        require("herdr").connect("devbox:main")
+    end)
+    connection.pick, connection.resolve = orig_pick, orig_resolve
+    assert(ok, err)
+    eq({ picked, resolved }, { 2, { "devbox:main" } })
+end
+
 T["terminal.parse_name"] = function()
     local t = require("herdr.terminal")
     local c, pane = t.parse_name("herdr://devbox:main/w1:p2/fix-login")
@@ -32,6 +52,15 @@ T["terminal.parse_name"] = function()
     c, pane = t.parse_name("herdr://local:agents/w3:p1")
     eq({ c.remote, c.session, pane }, { nil, "agents", "w3:p1" })
     eq(t.parse_name("herdr://nonsense"), nil)
+end
+
+T["every tree icon is a visible glyph"] = function()
+    local icons = require("herdr.style").get().icons
+    for name, icon in pairs(icons) do
+        MiniTest.expect.no_equality(vim.trim(icon), "", name)
+    end
+    -- Plain terminals and agents must be told apart at a glance.
+    MiniTest.expect.no_equality(icons.shell, icons.agent)
 end
 
 T["status"] = MiniTest.new_set()
