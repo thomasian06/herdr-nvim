@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.svg" alt="herdr-nvim logo: the Herdr ram with the Neovim N on its fleece" width="128" height="128">
+  <img src="assets/logo.svg" alt="herdr-nvim logo: the Herdr ram in Neovim colors, with the Neovim N as its eye" width="128" height="128">
 </p>
 
 <h1 align="center">herdr-nvim</h1>
