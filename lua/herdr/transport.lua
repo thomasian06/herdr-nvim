@@ -280,8 +280,9 @@ local function start_remote()
     local gen = generation
     sweep_stale_run_dirs()
     -- Short path: unix socket paths are limited to ~104 bytes on macOS.
-    run_dir = string.format("/tmp/herdr-nvim-%s-%d", vim.uv.os_get_passwd().uid, vim.uv.os_getpid())
-    vim.fn.mkdir(run_dir, "p", tonumber("700", 8))
+    run_dir = string.format("/tmp/herdr-nvim-%d-%d", vim.uv.os_get_passwd().uid, vim.uv.os_getpid())
+    vim.fn.mkdir(run_dir, "p")
+    vim.uv.fs_chmod(run_dir, tonumber("700", 8)) -- private: holds the SSH control socket
     ctl_path = run_dir .. "/ctl"
 
     master = system({

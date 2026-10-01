@@ -203,7 +203,8 @@ function M.winbar()
     end
     cached_style = cached_style or require("herdr.style").get()
     local style = cached_style
-    local st = state.status(pane.agent_status)
+    local status = state.pane_status(pane)
+    local st = state.status(status)
     local agent = pane.display_agent or pane.agent
     local ws = state.workspace(pane.workspace_id)
     local tab = state.tab(pane.tab_id)
@@ -226,8 +227,8 @@ function M.winbar()
     if agent then
         parts[#parts + 1] = "%#HerdrMuted#  " .. esc(agent) .. "%*"
     end
-    if pane.agent_status and pane.agent_status ~= "unknown" then
-        parts[#parts + 1] = "%#" .. st.hl .. "#  " .. pane.agent_status .. "%*"
+    if status ~= "unknown" then
+        parts[#parts + 1] = "%#" .. st.hl .. "#  " .. status .. "%*"
     end
     if vim.b[buf].herdr_history then
         parts[#parts + 1] = "%#HerdrAttached#  󰋚 history  (i: live)%*"
@@ -260,8 +261,7 @@ local function start(buf, pane, takeover)
     local terminal_id = pane.terminal_id
     local cmd, cleanup, env = transport.attach_cmd(terminal_id, takeover)
     vim.api.nvim_buf_call(buf, function()
-        vim.fn.jobstart(cmd, {
-            term = true,
+        M.termopen(cmd, {
             env = env,
             on_exit = function(_, code)
                 vim.schedule(function()
@@ -289,6 +289,10 @@ local function start(buf, pane, takeover)
     vim.bo[buf].buflisted = true
     setup_keys(buf)
     vim.api.nvim_exec_autocmds("User", { pattern = "HerdrAttach", data = { buf = buf, pane_id = pane.pane_id } })
+    -- Opening a finished agent's terminal counts as seeing it.
+    vim.schedule(function()
+        M.mark_watched_seen()
+    end)
 end
 
 --- Replace a dead/conflicting terminal buffer with a fresh (takeover) attach.
@@ -396,6 +400,112 @@ function M.open_many(panes)
     end
 end
 
+--- Start a terminal job in the current buffer. `jobstart({ term = true })` is
+--- Neovim 0.11+; `termopen()` does the same on 0.10 (deprecated later).
+function M.termopen(cmd, opts)
+    if vim.fn.has("nvim-0.11") == 1 then
+        return vim.fn.jobstart(cmd, vim.tbl_extend("force", opts, { term = true }))
+    end
+    ---@diagnostic disable-next-line: deprecated (only used on Neovim 0.10)
+    return vim.fn.termopen(cmd, opts)
+end
+
+-- herdr:// buffers --------------------------------------------------------------
+--
+-- Opening a buffer named herdr://<host or local>:<session>/<pane_id>[/<label>]
+-- attaches that pane into it, connecting first if needed. This makes Harpoon,
+-- :edit, sessions and buffer pickers work with herdr terminals.
+
+--- Parse a herdr:// buffer name. Returns connection, pane_id.
+function M.parse_name(name)
+    local where_session, pane_id = name:match("^herdr://([^/]+)/([^/]+)")
+    if not pane_id then
+        return nil
+    end
+    local where, session = where_session:match("^(.*):([^:]+)$")
+    if not where then
+        return nil
+    end
+    return { remote = where ~= "local" and where or nil, session = session }, pane_id
+end
+
+local function attach_into(buf, pane_id)
+    if not vim.api.nvim_buf_is_valid(buf) then
+        return
+    end
+    local pane = state.pane(pane_id)
+    if not pane then
+        return vim.notify("herdr: " .. pane_id .. " no longer exists on this server", vim.log.levels.WARN)
+    end
+    local existing = M.buffers[pane.terminal_id]
+    if existing and existing ~= buf and is_live(existing) then
+        -- Already open (e.g. under a newer name): show that buffer instead.
+        for _, win in ipairs(vim.fn.win_findbuf(buf)) do
+            vim.api.nvim_win_set_buf(win, existing)
+        end
+        pcall(vim.api.nvim_buf_delete, buf, { force = true })
+        return
+    end
+    start(buf, pane)
+    for _, win in ipairs(vim.fn.win_findbuf(buf)) do
+        M.decorate(win)
+    end
+    if vim.api.nvim_get_current_buf() == buf then
+        vim.cmd("startinsert")
+    end
+end
+
+--- BufReadCmd for herdr:// buffers.
+function M.read_cmd(buf, name)
+    if vim.b[buf].herdr_terminal_id then
+        return -- already a live terminal (e.g. :edit on it)
+    end
+    local conn, pane_id = M.parse_name(name)
+    if not conn then
+        return
+    end
+    vim.bo[buf].modified = false
+    vim.schedule(function()
+        local connection = require("herdr.connection")
+        local function go()
+            state.when_snapshot(function(snap)
+                if snap then
+                    attach_into(buf, pane_id)
+                end
+            end)
+        end
+        if connection.same(conn, connection.active) then
+            return go()
+        end
+        local function switch()
+            -- Use the matching profile (name, projects_dir) when there is one.
+            connection.list(function(list)
+                local target = conn
+                for _, c in ipairs(list) do
+                    if connection.same(c, conn) then
+                        target = c
+                        break
+                    end
+                end
+                connection.switch(target)
+                go()
+            end)
+        end
+        if not connection.active then
+            return switch()
+        end
+        vim.ui.select({ "Switch", "Cancel" }, {
+            prompt = "herdr: " .. name .. " is on " .. connection.label(conn) .. "; switch from " .. connection.label(
+                connection.active
+            ) .. "? (closes open terminals)",
+        }, function(choice)
+            if choice == "Switch" then
+                switch()
+            end
+        end)
+    end)
+end
+
 --- Remove a buffer without closing the windows showing it.
 function M.remove_buffer(buf)
     if package.loaded["snacks"] and Snacks and Snacks.bufdelete then
@@ -445,12 +555,52 @@ state.on_change(function()
         M.prune()
         -- Statuses changed: repaint winbars.
         if config.options.terminal.winbar then
-            pcall(vim.cmd, "redrawstatus!")
+            pcall(vim.api.nvim_command, "redrawstatus!")
         end
     end)
 end)
 
+local nvim_focused = true
+
+--- Mark the pane in the current window seen if Neovim has focus (Herdr does
+--- the same for the tab you are looking at).
+local function mark_watched_seen()
+    if not nvim_focused then
+        return
+    end
+    local id = vim.b[vim.api.nvim_get_current_buf()].herdr_pane_id
+    if id then
+        state.mark_seen(id)
+    end
+end
+M.mark_watched_seen = mark_watched_seen
+
+state.on_change(function()
+    -- An agent may have just finished while you watch it.
+    vim.schedule(mark_watched_seen)
+end)
+
 local term_group = vim.api.nvim_create_augroup("herdr_terminal_ui", { clear = true })
+vim.api.nvim_create_autocmd({ "BufEnter", "WinEnter" }, {
+    group = term_group,
+    pattern = { "herdr://*", "herdr-history://*" },
+    callback = function()
+        vim.schedule(mark_watched_seen)
+    end,
+})
+vim.api.nvim_create_autocmd("FocusGained", {
+    group = term_group,
+    callback = function()
+        nvim_focused = true
+        vim.schedule(mark_watched_seen)
+    end,
+})
+vim.api.nvim_create_autocmd("FocusLost", {
+    group = term_group,
+    callback = function()
+        nvim_focused = false
+    end,
+})
 vim.api.nvim_create_autocmd("BufWinEnter", {
     group = term_group,
     pattern = { "herdr://*", "herdr-history://*" },

@@ -332,6 +332,22 @@ function M.trust_status(path)
     return status
 end
 
+--- Trust a file in Neovim's trust database. Before Neovim 0.12,
+--- vim.secure.trust only accepts "allow" for a buffer, not a path.
+function M.trust_allow(path)
+    vim.fn.mkdir(vim.fn.stdpath("state"), "p") -- the database lives here
+    if pcall(vim.secure.trust, { action = "allow", path = path }) then
+        return
+    end
+    local existing = vim.fn.bufnr(vim.fn.fnamemodify(path, ":p"))
+    local buf = existing ~= -1 and existing or vim.fn.bufadd(path)
+    vim.fn.bufload(buf)
+    vim.secure.trust({ action = "allow", bufnr = buf })
+    if existing == -1 then
+        pcall(vim.api.nvim_buf_delete, buf, { force = true })
+    end
+end
+
 --- Read a trusted project file into a connection. Returns nil and a reason
 --- when it is not trusted (Neovim asks, via vim.secure.read) or invalid.
 function M.read_project(path)
@@ -403,8 +419,12 @@ function M.autoconnect(dir)
         vim.ui.select({ "Trust and connect", "Not now", "Never (deny)" }, {
             prompt = "herdr: " .. vim.fn.fnamemodify(path, ":~") .. " wants to connect to " .. what,
         }, function(choice)
+            -- vim.secure.trust writes into stdpath("state"), which may not exist yet.
+            if choice == "Trust and connect" or choice == "Never (deny)" then
+                vim.fn.mkdir(vim.fn.stdpath("state"), "p")
+            end
             if choice == "Trust and connect" then
-                vim.secure.trust({ action = "allow", path = path })
+                M.trust_allow(path)
                 connect()
             elseif choice == "Never (deny)" then
                 vim.secure.trust({ action = "deny", path = path })

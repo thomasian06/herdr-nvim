@@ -37,6 +37,9 @@ Options (defaults shown):                                     *herdr-options* >l
       remote = nil,            -- optional SSH target offered as a profile
       session = "main",        -- session for `remote`
       profiles = {},           -- { { name = "devbox", remote = "devbox" } }
+      status_style = "herdr",  -- Herdr's [ui] status_indicators, or
+                               -- "dots" / "symbols"
+      mark_seen = "local",     -- "local", or "herdr" to also tell Herdr
       projects_dir = nil,      -- where new spaces start ("~" = server home);
                                -- profiles can set their own `projects_dir`
       auto_start = "ask",      -- start a missing server: "ask"|true|false
@@ -123,8 +126,17 @@ with split panes becomes a nested group.
   q               close the tree
   ?               help
 
-Status icons: `●` working, `!` blocked, `✓` done, `○` idle. `↗` marks
-terminals attached in this Neovim.
+Statuses look like Herdr's: yellow `●` working, red `●` blocked, teal `●`
+done (not seen yet), green `○` idle (finished and seen), `·` no agent. Herdr
+only marks an agent seen when focused in Herdr itself, so viewing it in
+Neovim also counts (`mark_seen = "local"`, or `"herdr"` to tell Herdr too).
+Glyphs follow Herdr's `[ui] status_indicators`. `↗` marks terminals attached
+in this Neovim.
+
+                                                             *herdr-buffers*
+Terminal buffers are named `herdr://<host or local>:<session>/<pane>/<label>`.
+Opening one attaches that pane (connecting first if needed), so Harpoon
+marks, |:edit|, sessions and buffer pickers work with agent terminals.
 
 ==============================================================================
 5. PICKER                                                      *herdr-picker*

@@ -26,7 +26,7 @@ function M.items()
             kind = "space",
             workspace_id = ws.workspace_id,
             name = ws.label or ws.workspace_id,
-            status = ws.agent_status,
+            status = state.workspace_status(ws.workspace_id),
             focused = ws.focused,
         }
         items[#items + 1] = space
@@ -45,7 +45,7 @@ function M.items()
                         workspace_id = ws.workspace_id,
                         name = name,
                         agent = p.display_agent or p.agent,
-                        status = p.agent_status,
+                        status = state.pane_status(p),
                         cwd = p.foreground_cwd or p.cwd,
                         focused = p.focused and tab.focused and ws.focused,
                         parent = space,
@@ -128,7 +128,7 @@ local function preview_space(ctx)
     local hls = {}
     for _, p in ipairs(state.snapshot and state.snapshot.panes or {}) do
         if p.workspace_id == item.workspace_id then
-            local st = state.status(p.agent_status)
+            local st = state.status(state.pane_status(p))
             local agent = p.display_agent or p.agent
             lines[#lines + 1] =
                 string.format("  %s %s%s", st.icon, state.pane_label(p), agent and ("  (" .. agent .. ")") or "")

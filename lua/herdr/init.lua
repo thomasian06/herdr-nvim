@@ -77,28 +77,31 @@ function M.refresh()
     require("herdr.state").refresh()
 end
 
---- Open a pane by id (e.g. "w1:p1").
+--- Open a pane by id (e.g. "w1:p1"). A pane created moments ago may not be in
+--- the snapshot yet: refresh once before giving up.
 function M.open(pane_id, opts)
-    if not require("herdr.connection").active then
-        return require("herdr.connection").with_connection(function()
+    local connection = require("herdr.connection")
+    if not connection.active then
+        return connection.with_connection(function()
             M.open(pane_id, opts)
         end)
     end
     local state = require("herdr.state")
-    local function go()
-        require("herdr.terminal").open(pane_id, opts)
-    end
-    if state.snapshot then
-        return go()
-    end
-    local off
-    off = state.on_change(function(snap)
-        if snap then
-            off()
-            vim.schedule(go)
+    state.when_snapshot(function()
+        if state.pane(pane_id) then
+            return require("herdr.terminal").open(pane_id, opts)
         end
+        local off
+        off = state.on_change(function(snap)
+            if snap then
+                off()
+                vim.schedule(function()
+                    require("herdr.terminal").open(pane_id, opts) -- warns if still unknown
+                end)
+            end
+        end)
+        state.refresh()
     end)
-    state.start()
 end
 
 --- Open every agent in the session, tiled in a new tab.

@@ -40,7 +40,7 @@ local function pane_node(p, tab, ws, name)
         tab_id = p.tab_id,
         name = name,
         detail = p.display_agent or p.agent,
-        status = p.agent_status,
+        status = state.pane_status(p),
         focused = p.focused and tab.focused and ws.focused,
     }
 end
@@ -58,7 +58,7 @@ local function build()
             id = ws.workspace_id,
             workspace_id = ws.workspace_id,
             name = ws.label or ws.workspace_id,
-            status = ws.agent_status,
+            status = state.workspace_status(ws.workspace_id),
             focused = ws.focused,
             children = {},
             parent = root,
@@ -80,7 +80,7 @@ local function build()
                         workspace_id = ws.workspace_id,
                         tab_id = tab.tab_id,
                         name = custom and tab.label or ("tab " .. (tab.number or tab.label or "")),
-                        status = tab.agent_status,
+                        status = state.tab_status(tab.tab_id),
                         focused = tab.focused and ws.focused,
                         children = {},
                         parent = space,
@@ -193,7 +193,7 @@ local function render()
                 right[#right + 1] = { style.icons.attached .. " ", "HerdrAttached" }
             end
             local st = state.status(child.status)
-            if child.status and child.status ~= "unknown" then
+            if child.status then
                 right[#right + 1] = { st.icon .. " ", st.hl }
             end
             add(text, child, {
@@ -333,8 +333,9 @@ function actions.expand()
         return toggle(node)
     end
     local child = node.children[1]
-    if child and node_lines[child.key] then
-        vim.api.nvim_win_set_cursor(win(), { node_lines[child.key], 0 })
+    local w = win()
+    if w and child and node_lines[child.key] then
+        vim.api.nvim_win_set_cursor(w, { node_lines[child.key], 0 })
     end
 end
 
@@ -347,8 +348,9 @@ function actions.collapse()
         return toggle(node)
     end
     local parent = node.parent
-    if parent and node_lines[parent.key] then
-        vim.api.nvim_win_set_cursor(win(), { node_lines[parent.key], 0 })
+    local w = win()
+    if w and parent and node_lines[parent.key] then
+        vim.api.nvim_win_set_cursor(w, { node_lines[parent.key], 0 })
     end
 end
 
@@ -444,7 +446,7 @@ end
 function actions.rename()
     local node = current_node()
     local kind, id = target(node or {})
-    if not kind then
+    if not (node and kind) then
         return
     end
     require("herdr.ui").input({ prompt = "Rename: ", default = node.name }, function(name)
@@ -459,7 +461,7 @@ end
 function actions.delete()
     local node = current_node()
     local kind, id = target(node or {})
-    if not kind then
+    if not (node and kind) then
         return
     end
     local what = node.kind == "space" and ("space '" .. node.name .. "' and all its terminals")
@@ -580,6 +582,7 @@ function M.open()
     if not w then
         vim.cmd((style.position == "right" and "botright" or "topleft") .. " vertical " .. style.width .. "split")
         w = vim.api.nvim_get_current_win()
+        assert(buf, "herdr: tree buffer missing")
         vim.api.nvim_win_set_buf(w, buf)
         local wo = vim.wo[w]
         wo.number, wo.relativenumber, wo.signcolumn = false, false, "no"

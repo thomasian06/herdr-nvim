@@ -40,6 +40,13 @@ M.defaults = {
         icons = nil, -- e.g. { agent = "A ", shell = "$ " }
         indent = nil, -- e.g. { vertical = "| ", middle = "|-", last = "`-" }
     },
+    -- Status glyphs: "herdr" follows Herdr's [ui] status_indicators; or "dots" /
+    -- "symbols".
+    status_style = "herdr",
+    -- Finished agents show as done (teal ●) until seen, then idle (green ○).
+    -- "local": viewing one in Neovim marks it seen here only. "herdr": also
+    -- mark it seen in Herdr (this moves Herdr's focus to it).
+    mark_seen = "local",
     -- Notifications when an agent finishes or needs input (Herdr's rules and sounds).
     notify = {
         enabled = true,

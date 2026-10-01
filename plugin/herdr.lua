@@ -7,6 +7,15 @@ local function toggle()
     require("herdr").toggle()
 end
 
+-- Opening a herdr:// buffer (Harpoon, :edit, sessions, ...) attaches its pane.
+vim.api.nvim_create_autocmd("BufReadCmd", {
+    group = vim.api.nvim_create_augroup("herdr_read", { clear = true }),
+    pattern = "herdr://*",
+    callback = function(ev)
+        require("herdr.terminal").read_cmd(ev.buf, ev.match)
+    end,
+})
+
 local subcommands = {
     toggle = toggle,
     tree = toggle,

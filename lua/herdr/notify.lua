@@ -22,37 +22,8 @@ local plugin_root = vim.fn.fnamemodify(debug.getinfo(1, "S").source:sub(2), ":p:
 
 -- Herdr config -------------------------------------------------------------------
 
---- Read `[ui.sound]` from Herdr's config.toml (just the keys we need).
 local function herdr_sound_config()
-    local dir = (vim.env.XDG_CONFIG_HOME and vim.env.XDG_CONFIG_HOME ~= "") and vim.env.XDG_CONFIG_HOME
-        or (vim.env.HOME .. "/.config")
-    local path = dir .. "/herdr/config.toml"
-    local out = {}
-    local f = io.open(path, "r")
-    if not f then
-        return out
-    end
-    local section
-    for line in f:lines() do
-        line = line:gsub("%s+#.*$", "")
-        local s = line:match("^%s*%[([^%]]+)%]%s*$")
-        if s then
-            section = s
-        elseif section == "ui.sound" then
-            local k, v = line:match("^%s*([%w_]+)%s*=%s*(.-)%s*$")
-            if k then
-                v = v:match('^"(.*)"$') or v:match("^'(.*)'$") or v
-                if v == "true" or v == "false" then
-                    v = v == "true"
-                elseif type(v) == "string" and v:sub(1, 1) ~= "/" and v:sub(1, 1) ~= "~" then
-                    v = vim.fn.fnamemodify(path, ":h") .. "/" .. v -- relative to the config file
-                end
-                out[k] = v
-            end
-        end
-    end
-    f:close()
-    return out
+    return require("herdr.herdr_config").section("ui.sound", true)
 end
 
 local function sound_file(kind)
