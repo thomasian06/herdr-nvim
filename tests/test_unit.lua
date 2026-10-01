@@ -211,7 +211,7 @@ T["status parsing"] = function()
     local st = t.parse_status('{"status":"running","running":true,"socket":"/x/herdr.sock","compatible":true}')
     eq({ st.running, st.socket, st.compatible }, { true, "/x/herdr.sock", true })
     eq(t.parse_status('{"status":"not_running","running":false,"compatible":null}').running, false)
-    eq(t.parse_status("not json").running, false)
+    eq(t.parse_status("not json").running, true) -- deliberate failure
 end
 
 T["our ssh master only adds options the user's config leaves unset"] = function()
