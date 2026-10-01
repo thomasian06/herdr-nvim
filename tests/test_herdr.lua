@@ -114,6 +114,38 @@ T["history shows output that scrolled off the screen"] = function()
     H.wait_child(child, [[vim.b.herdr_terminal_id ~= nil]])
 end
 
+T["history follows the window width, without duplicates"] = function()
+    local pane = server.space("widths").root_pane.pane_id
+    child.lua([[require("herdr.state").refresh()]])
+    child.cmd("vsplit | vertical resize 50")
+    child.lua([[require("herdr").open(...)]], { pane })
+    H.wait_child(child, ([[require("herdr.terminal").attached_panes()[%q] ~= nil]]):format(pane))
+    vim.wait(500) -- the pane takes the window's width
+    -- 105-column lines while the pane is 50 wide: Herdr wraps them on screen
+    local cmd = 'for i in $(seq 1 60); do printf "L%03d %0100d\\n" $i 0; done\n'
+    server.request("pane.send_text", { pane_id = pane, text = cmd })
+    server.wait_output(pane, "L060")
+    child.cmd("stopinsert")
+    child.lua([[require("herdr.history").open("gg")]])
+    H.wait_child(child, [[vim.b.herdr_history == true and vim.fn.search("^L060", "nw") > 0]])
+    local built = [[require("herdr.history")._built[vim.api.nvim_get_current_buf()] ]]
+    eq(child.lua_get(built .. ".width"), 50)
+    -- Fullscreen: rebuilt at the new width, each line once and on one row.
+    child.cmd("only")
+    H.wait_child(child, ("(%s or {}).width == vim.api.nvim_win_get_width(0)"):format(built))
+    H.wait_child(child, [[vim.fn.search("^L060 0\\+$", "nw") > 0]])
+    local lines = child.lua_get([[vim.api.nvim_buf_get_lines(0, 0, -1, false)]])
+    local seen, gaps = {}, 0
+    for _, l in ipairs(lines) do
+        local n = l:match("^L(%d%d%d) 0+%s*$")
+        if n then
+            seen[#seen + 1] = n
+        end
+        gaps = gaps + (l:find("not loaded", 1, true) and 1 or 0)
+    end
+    eq({ #seen, seen[1], seen[60], gaps }, { 60, "001", "060", 0 })
+end
+
 T["d closes a terminal"] = function()
     local created = server.space("zeta")
     local tab_id = created.tab.tab_id

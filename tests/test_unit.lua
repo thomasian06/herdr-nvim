@@ -63,6 +63,20 @@ T["every tree icon is a visible glyph"] = function()
     MiniTest.expect.no_equality(icons.shell, icons.agent)
 end
 
+T["history positions map across widths"] = function()
+    local map = require("herdr.history")._map_row
+    local short, long = "short", string.rep("x", 100)
+    local lines = { short, long, short }
+    -- At width 50 the long line takes rows 2-3; at width 100, row 2.
+    local narrow = { lines = lines, width = 50, base = 0 }
+    local wide = { lines = lines, width = 100, base = 0 }
+    eq({ map(narrow, wide, 1), map(narrow, wide, 2), map(narrow, wide, 3), map(narrow, wide, 4) }, { 1, 2, 2, 3 })
+    eq({ map(wide, narrow, 2), map(wide, narrow, 3) }, { 2, 4 })
+    -- Lines trimmed from the front (history.limit) shift rows up.
+    local trimmed = { lines = { long, short }, width = 50, base = 1 }
+    eq(map(narrow, trimmed, 4), 3)
+end
+
 T["status"] = MiniTest.new_set()
 
 T["status"]["aggregate follows Herdr's priority"] = function()

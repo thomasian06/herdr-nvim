@@ -33,8 +33,17 @@ local ANCHOR = 12 -- lines used to align a read with the cache
 ---@field last integer uv.now() of the last read
 ---@field buf integer? history buffer
 ---@field dirty boolean cache changed since the buffer was built
+---@field trimmed integer lines dropped from the front so far (history.limit)
 
 local caches = {} ---@type table<string, herdr.HistoryCache>
+
+---@class herdr.HistoryBuild
+---@field lines string[] the lines the buffer was fed (ANSI)
+---@field width integer terminal width they were wrapped at
+---@field base integer the cache's `trimmed` count at the time
+---@field starts integer[]? buffer row where each line starts (lazy)
+
+local built = {} ---@type table<integer, herdr.HistoryBuild> history buffer -> how it was built
 
 local function strip(s)
     return (s:gsub("\27%[[%d;:?]*[ -/]*[@-~]", ""):gsub("\27%][^\7\27]*[\7]", ""):gsub("\r$", ""))
@@ -43,7 +52,17 @@ end
 local function cache_for(pane_id)
     local c = caches[pane_id]
     if not c then
-        c = { stable = {}, plain = {}, screen = {}, rows = 0, fetching = false, again = false, last = 0, dirty = true }
+        c = {
+            stable = {},
+            plain = {},
+            screen = {},
+            rows = 0,
+            fetching = false,
+            again = false,
+            last = 0,
+            dirty = true,
+            trimmed = 0,
+        }
         caches[pane_id] = c
     end
     return c
@@ -115,6 +134,7 @@ local function merge(c, text, rows, full)
             table.remove(c.stable, 1)
             table.remove(c.plain, 1)
         end
+        c.trimmed = c.trimmed + excess
     end
     return true
 end
@@ -131,7 +151,10 @@ function M.sync(pane_id, cb)
     local rows = pane and pane.scroll and pane.scroll.viewport_rows or 50
     c.fetching = true
     local function read(lines, full)
-        local params = { pane_id = pane_id, source = "recent", lines = lines, format = "ansi", strip_ansi = false }
+        -- Logical lines (soft wraps joined), so the cache does not depend on the
+        -- pane's width when it was read; Neovim wraps them to the window.
+        local params =
+            { pane_id = pane_id, source = "recent_unwrapped", lines = lines, format = "ansi", strip_ansi = false }
         api.request("pane.read", params, function(err, res)
             local text = res and res.read and res.read.text
             if err or not text then
@@ -192,52 +215,140 @@ local function all_lines(c)
     return out
 end
 
---- (Re)build the history buffer from the cache. Returns the buffer.
-local function build(pane_id, live_buf)
+--- Width of a window's text area (what a terminal shown there wraps at).
+local function text_width(win)
+    local info = vim.fn.getwininfo(win)[1]
+    return math.max(1, info.width - info.textoff)
+end
+
+--- Buffer row where each line starts once wrapped at the build's width.
+local function row_starts(b)
+    if not b.starts then
+        local starts, row = {}, 1
+        for i, l in ipairs(b.lines) do
+            starts[i] = row
+            row = row + math.max(1, math.ceil(vim.api.nvim_strwidth(strip(l)) / b.width))
+        end
+        b.starts = starts
+    end
+    return b.starts
+end
+
+local function line_rows(b, i)
+    return math.max(1, math.ceil(vim.api.nvim_strwidth(strip(b.lines[i])) / b.width))
+end
+
+--- Rows the build fills once the terminal has processed it.
+local function total_rows(b)
+    local starts = row_starts(b)
+    return #starts == 0 and 0 or starts[#starts] + line_rows(b, #starts) - 1
+end
+
+--- Map a row of one build to the row showing the same text in another (which
+--- may be wrapped at a different width and have lines trimmed or appended).
+local function map_row(from, to, row)
+    local starts = row_starts(from)
+    local lo, hi = 1, #starts
+    while lo < hi do -- last line starting at or before `row`
+        local mid = math.floor((lo + hi + 1) / 2)
+        if starts[mid] <= row then
+            lo = mid
+        else
+            hi = mid - 1
+        end
+    end
+    if #starts == 0 then
+        return 1
+    end
+    local cells = (row - starts[lo]) * from.width -- how far into the line
+    local i = math.min(math.max(lo - (to.base - from.base), 1), #to.lines)
+    local to_starts = row_starts(to)
+    if #to_starts == 0 then
+        return 1
+    end
+    return to_starts[i] + math.min(math.floor(cells / to.width), line_rows(to, i) - 1)
+end
+
+--- (Re)build the history buffer from the cache, wrapped to fit `win`.
+--- Windows showing an older copy switch to the new one at the same text.
+--- Returns the buffer.
+local function build(pane_id, live_buf, win)
     local c = cache_for(pane_id)
-    if c.buf and vim.api.nvim_buf_is_valid(c.buf) and not c.dirty then
+    local width = text_width(win)
+    local current = c.buf and vim.api.nvim_buf_is_valid(c.buf) and built[c.buf]
+    if current and not c.dirty and current.width == width then
         return c.buf
     end
+    local lines = all_lines(c)
     local buf = vim.api.nvim_create_buf(false, true)
     vim.bo[buf].scrollback = 100000
-    local chan = vim.api.nvim_open_term(buf, {})
-    vim.api.nvim_chan_send(chan, table.concat(all_lines(c), "\r\n"))
+    -- A terminal wraps output at its width, which comes from the current
+    -- window when it is opened, then from the windows showing it: feed it in
+    -- a hidden float the size of `win`'s text area.
+    local float = vim.api.nvim_open_win(buf, false, {
+        relative = "editor",
+        row = 0,
+        col = 0,
+        width = width,
+        height = math.max(1, vim.api.nvim_win_get_height(win)),
+        style = "minimal",
+        focusable = false,
+        hide = true,
+        noautocmd = true,
+    })
+    vim.api.nvim_win_call(float, function()
+        local chan = vim.api.nvim_open_term(buf, {})
+        vim.api.nvim_chan_send(chan, table.concat(lines, "\r\n"))
+    end)
+    local this = { lines = lines, width = width, base = c.trimmed } ---@type herdr.HistoryBuild
+    built[buf] = this
     vim.b[buf].herdr_pane_id = pane_id
     vim.b[buf].herdr_history = true
     vim.b[buf].herdr_live_buf = live_buf
-    vim.b[buf].herdr_expected_lines = #all_lines(c)
-    local prev = c.buf
-    if prev and vim.api.nvim_buf_is_valid(prev) then
-        pcall(vim.api.nvim_buf_set_name, prev, "herdr-history://" .. pane_id .. " (old)")
+    vim.b[buf].herdr_expected_lines = total_rows(this) -- wrapped lines take several rows
+    local old = c.buf
+    if old and vim.api.nvim_buf_is_valid(old) then
+        pcall(vim.api.nvim_buf_set_name, old, "herdr-history://" .. pane_id .. " (old)")
     end
     pcall(vim.api.nvim_buf_set_name, buf, "herdr-history://" .. pane_id)
     vim.bo[buf].bufhidden = "hide"
     vim.bo[buf].buflisted = false
     M.setup_keys(buf)
-    local old = c.buf
     c.buf, c.dirty = buf, false
-    if old and vim.api.nvim_buf_is_valid(old) then
-        -- Swap windows showing the old copy, keeping their distance from the bottom.
-        for _, win in ipairs(vim.fn.win_findbuf(old)) do
-            local from_bottom = vim.api.nvim_buf_line_count(old) - vim.api.nvim_win_get_cursor(win)[1]
-            local view = vim.api.nvim_win_call(win, vim.fn.winsaveview)
-            local top_from_bottom = vim.api.nvim_buf_line_count(old) - view.topline
+    when_ready(buf, function()
+        pcall(vim.api.nvim_win_close, float, true)
+    end)
+    if old and vim.api.nvim_buf_is_valid(old) and built[old] then
+        local prev, from = old, built[old]
+        -- Swap windows showing the old copy. At the bottom: stay at the bottom;
+        -- elsewhere: keep the same text at the top and under the cursor.
+        for _, w in ipairs(vim.fn.win_findbuf(prev)) do
+            local cursor = vim.api.nvim_win_get_cursor(w)[1]
+            local follow = cursor >= vim.api.nvim_buf_line_count(prev)
+            local topline = vim.api.nvim_win_call(w, vim.fn.winsaveview).topline
             when_ready(buf, function()
-                if not vim.api.nvim_win_is_valid(win) or vim.api.nvim_win_get_buf(win) ~= old then
+                if not vim.api.nvim_win_is_valid(w) or vim.api.nvim_win_get_buf(w) ~= prev then
                     return
                 end
-                vim.api.nvim_win_set_buf(win, buf)
-                M.style_window(win)
+                vim.api.nvim_win_set_buf(w, buf)
+                M.style_window(w)
                 local n = vim.api.nvim_buf_line_count(buf)
-                pcall(vim.api.nvim_win_set_cursor, win, { math.max(1, n - from_bottom), 0 })
-                vim.api.nvim_win_call(win, function()
-                    vim.fn.winrestview({ topline = math.max(1, n - top_from_bottom) })
-                end)
+                local to = this
+                if follow then
+                    vim.api.nvim_win_set_cursor(w, { n, 0 })
+                else
+                    local top = math.min(map_row(from, to, topline), n)
+                    pcall(vim.api.nvim_win_set_cursor, w, { math.min(map_row(from, to, cursor), n), 0 })
+                    vim.api.nvim_win_call(w, function()
+                        vim.fn.winrestview({ topline = top })
+                    end)
+                end
             end)
         end
         when_ready(buf, function()
             vim.schedule(function()
-                pcall(vim.api.nvim_buf_delete, old, { force = true })
+                built[prev] = nil
+                pcall(vim.api.nvim_buf_delete, prev, { force = true })
             end)
         end)
     end
@@ -297,8 +408,8 @@ function M.open(motion)
         vim.cmd("stopinsert")
     end
     local c = cache_for(pane_id)
-    local function show()
-        local buf = build(pane_id, live)
+    local function show(done)
+        local buf = build(pane_id, live, win)
         vim.api.nvim_win_set_buf(win, buf)
         M.style_window(win)
         require("herdr.terminal").decorate(win)
@@ -312,14 +423,21 @@ function M.open(motion)
                     vim.cmd("normal! " .. vim.api.nvim_replace_termcodes(motion, true, false, true))
                 end)
             end
+            if done then
+                done()
+            end
         end)
     end
     if #c.stable > 0 or #c.screen > 0 then
-        show() -- instant from cache
-        M.sync(pane_id, function()
-            if c.dirty and c.buf and #vim.fn.win_findbuf(c.buf) > 0 then
-                build(pane_id, live) -- refresh in place, keeping the position
-            end
+        -- Instant from the cache; refresh once it is positioned, so the
+        -- refresh keeps the position the motion picked.
+        show(function()
+            M.sync(pane_id, function()
+                local shown = c.buf and vim.fn.win_findbuf(c.buf)[1]
+                if c.dirty and shown then
+                    build(pane_id, live, shown) -- refresh in place, keeping the position
+                end
+            end)
         end)
     else
         M.sync(pane_id, function(err)
@@ -338,6 +456,7 @@ function M.forget(pane_id)
         for _, win in ipairs(vim.fn.win_findbuf(c.buf)) do
             M.back(win, false)
         end
+        built[c.buf] = nil
         pcall(vim.api.nvim_buf_delete, c.buf, { force = true })
     end
     caches[pane_id] = nil
@@ -367,7 +486,27 @@ local function sync_attached()
     end
 end
 
+--- Rewrap history shown in windows whose width changed (splits, zoom,
+--- fullscreen), keeping the same text in view.
+local function on_resized()
+    for _, win in ipairs(vim.v.event.windows or {}) do
+        if vim.api.nvim_win_is_valid(win) then
+            local buf = vim.api.nvim_win_get_buf(win)
+            local b = built[buf]
+            local pane_id = vim.b[buf].herdr_pane_id
+            local c = pane_id and caches[pane_id]
+            if b and c and c.buf == buf and b.width ~= text_width(win) then
+                build(pane_id, vim.b[buf].herdr_live_buf, win)
+            end
+        end
+    end
+end
+
 function M.setup()
+    vim.api.nvim_create_autocmd("WinResized", {
+        group = vim.api.nvim_create_augroup("herdr_history", { clear = true }),
+        callback = on_resized,
+    })
     state.on_change(function(snapshot)
         if not snapshot then
             return
@@ -385,5 +524,7 @@ end
 M._merge = merge
 M._cache_for = cache_for
 M._caches = caches
+M._map_row = map_row
+M._built = built
 
 return M
