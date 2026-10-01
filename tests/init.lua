@@ -15,7 +15,20 @@ if not vim.env.HERDR_NVIM_TEST_HOME then
 end
 vim.env.HERDR_DISABLE_SOUND = "1"
 
-vim.opt.rtp = { root, vim.env.VIMRUNTIME }
+-- Keep only Neovim's own runtime dirs (incl. bundled treesitter parsers),
+-- dropping any user config or installed plugins.
+local rtp = { root }
+local vim_dir = vim.env.VIM or ""
+for _, dir in ipairs(vim.opt.rtp:get()) do
+    if
+        dir == vim.env.VIMRUNTIME
+        or (vim_dir ~= "" and dir:sub(1, #vim_dir) == vim_dir)
+        or dir:find("/lib/nvim", 1, true)
+    then
+        rtp[#rtp + 1] = dir
+    end
+end
+vim.opt.rtp = rtp
 for _, dep in ipairs(vim.fn.glob(root .. "/.tests/deps/*", false, true)) do
     vim.opt.rtp:append(dep)
 end

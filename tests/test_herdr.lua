@@ -173,6 +173,89 @@ T["picker lists spaces and terminals"] = function()
     child.lua([[Snacks.picker.get()[1]:close()]])
 end
 
+T["gi composes input in a buffer and sends it"] = function()
+    local pane = server.space("lambda").root_pane.pane_id
+    child.lua([[require("herdr").open(...)]], { pane })
+    H.wait_child(child, ([[require("herdr.terminal").attached_panes()[%q] ~= nil]]):format(pane))
+    child.cmd("stopinsert")
+    child.type_keys("gi")
+    H.wait_child(child, [[vim.api.nvim_buf_get_name(0):find("herdr%-compose://") ~= nil]])
+    eq(child.fn.mode(), "i")
+    child.type_keys("echo composed-$((1+1))", "<C-s>")
+    server.wait_output(pane, "composed-2")
+    H.wait_child(child, [[vim.b.herdr_terminal_id ~= nil]]) -- back in the terminal
+    eq(#child.api.nvim_tabpage_list_wins(0), 1) -- compose split closed
+end
+
+--- Make a shell pane report itself as an agent (like Herdr's agent integrations).
+local function report_agent(pane, state_)
+    server.request("pane.report_agent", { pane_id = pane, source = "herdr-nvim-test", agent = "pi", state = state_ })
+end
+
+T["compose sends to an agent with agent.prompt"] = function()
+    local pane = server.space("nu").root_pane.pane_id
+    report_agent(pane, "idle")
+    child.lua([[
+        _G.methods = {}
+        local api = require("herdr.api")
+        local request = api.request
+        api.request = function(method, ...) table.insert(_G.methods, method); return request(method, ...) end
+        require("herdr.state").refresh()
+    ]])
+    H.wait_child(child, ([[(require("herdr.state").pane(%q) or {}).agent == "pi"]]):format(pane))
+    child.lua([[require("herdr").open(...)]], { pane })
+    H.wait_child(child, ([[require("herdr.terminal").attached_panes()[%q] ~= nil]]):format(pane))
+    child.cmd("stopinsert")
+    child.type_keys("gi", "echo prompted-$((2+3))", "<C-s>")
+    server.wait_output(pane, "prompted-5")
+    eq(vim.tbl_contains(child.lua_get("_G.methods"), "agent.prompt"), true)
+end
+
+T["statuses: done until seen, with a notification"] = function()
+    local pane = server.space("xi").root_pane.pane_id
+    child.lua([[
+        _G.sounds = {}
+        require("herdr.notify").play = function(kind) table.insert(_G.sounds, kind) end
+    ]])
+    report_agent(pane, "working")
+    H.wait_child(
+        child,
+        ([[require("herdr.state").pane_status(require("herdr.state").pane(%q) or {}) == "working"]]):format(pane)
+    )
+    report_agent(pane, "idle") -- finished, and nobody has looked at it yet
+    H.wait_child(
+        child,
+        ([[require("herdr.state").pane_status(require("herdr.state").pane(%q) or {}) == "done"]]):format(pane)
+    )
+    H.wait_child(child, [[vim.tbl_contains(_G.sounds, "done")]])
+    eq(
+        child.lua_get(
+            [[require("herdr.state").workspace_status(require("herdr.state").pane(...).workspace_id)]],
+            { pane }
+        ),
+        "done"
+    )
+    -- Viewing its terminal marks it seen.
+    child.lua([[require("herdr").open(...)]], { pane })
+    H.wait_child(
+        child,
+        ([[require("herdr.state").pane_status(require("herdr.state").pane(%q)) == "idle"]]):format(pane)
+    )
+end
+
+T["a compose draft survives closing"] = function()
+    local pane = server.space("mu").root_pane.pane_id
+    child.lua([[require("herdr").open(...)]], { pane })
+    H.wait_child(child, ([[require("herdr.terminal").attached_panes()[%q] ~= nil]]):format(pane))
+    child.cmd("stopinsert")
+    child.type_keys("gi", "half a thought", "<Esc>", "q")
+    H.wait_child(child, [[vim.b.herdr_terminal_id ~= nil]])
+    child.cmd("stopinsert")
+    child.type_keys("gi")
+    H.wait_child(child, [[vim.api.nvim_buf_get_name(0):find("herdr%-compose://") ~= nil]])
+    eq(child.api.nvim_buf_get_lines(0, 0, -1, false), { "half a thought" })
+end
+
 T["disconnect detaches everything"] = function()
     local pane = server.space("kappa").root_pane.pane_id
     child.lua([[require("herdr.state").refresh()]])

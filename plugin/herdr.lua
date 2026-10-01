@@ -34,6 +34,9 @@ local subcommands = {
     agents = function()
         require("herdr").agents()
     end,
+    compose = function()
+        require("herdr.compose").open()
+    end,
     ["new-space"] = function(args)
         require("herdr").new_space(args[1] and table.concat(args, " ") or nil)
     end,

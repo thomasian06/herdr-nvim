@@ -88,6 +88,8 @@ require("herdr").setup({
     navigation = { left = "<C-h>", down = "<C-j>", up = "<C-k>", right = "<C-l>" },
     history = true, -- scrolling up / searching opens a local, cached copy of the history
     history_limit = 100000, -- lines kept per terminal
+    compose = "gi", -- normal-mode key that opens the compose split (false to disable)
+    compose_height = 8,
   },
   tree = { -- unset values are borrowed from your file explorer
     width = nil,
@@ -108,6 +110,7 @@ require("herdr").setup({
 | `:Herdr open <pane_id>` | Open a terminal, e.g. `:Herdr open w1:p1` |
 | `:Herdr refresh` | Re-fetch the session snapshot |
 | `:Herdr agents` | Open every agent in the session, tiled in a new tab |
+| `:Herdr compose` | Compose input for the terminal in the current window (`gi`) |
 | `:Herdr new-space [name]` | Create a space and open its terminal (`<leader>an`); it starts in `projects_dir` when set |
 | `:Herdr connect [profile\|host[:session]]` | Connect to a server; without an argument, pick one |
 | `:Herdr disconnect` | Disconnect |
@@ -224,6 +227,7 @@ To keep buffer tabs to the right of the tree (like with neo-tree or snacks' expl
 
 ## Working in agent terminals
 
+- `gi` (normal mode in a terminal or its history, or `:Herdr compose`) opens a compose split: write the agent's input with full Neovim editing, then `<CR>` (normal mode) or `<C-s>` sends it as one prompt (Herdr's `agent.prompt`: pasted as a block, then submitted; shells get the text plus Enter). `<C-g>` pastes it into the agent's own input without sending; `q` closes and keeps the draft (one per terminal). Terminal buffers themselves stay read-only: normal mode there is for viewing and yanking.
 - `<Esc>` leaves terminal mode and is not sent to the agent. Agents that interrupt on `<Esc>` need another interrupt key; for [pi](https://github.com/earendil-works/pi-coding-agent), in `~/.pi/agent/keybindings.json` on the machine running the agents:
 
   ```json

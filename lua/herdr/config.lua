@@ -81,6 +81,11 @@ M.defaults = {
         history = true,
         -- Most lines kept per terminal's history cache.
         history_limit = 100000,
+        -- Normal-mode key in a herdr terminal (or its history) that opens a
+        -- compose split: write the agent's input with full Neovim editing,
+        -- then send it. false to disable.
+        compose = "gi",
+        compose_height = 8,
     },
     -- Debounce for re-fetching the session snapshot after server events (ms).
     refresh_debounce_ms = 80,

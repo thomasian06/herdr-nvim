@@ -84,6 +84,9 @@ explorer or neo-tree when present.
 :Herdr agents                                                 *:Herdr-agents*
     Open every agent in the session, tiled in a new tab.
 
+:Herdr compose                                               *:Herdr-compose*
+    Compose input for the terminal in the current window (see |herdr-compose|).
+
 :Herdr new-space [{name}]                                  *:Herdr-new-space*
     Create a space and open its terminal (<leader>an). Asks for a name
     unless given. Starts in the connection's `projects_dir` when set.
@@ -204,6 +207,12 @@ Run `:checkhealth herdr` to check the current connection.
   pi), or set `terminal.esc = "passthrough"`. Entering a herdr terminal window
   enters terminal mode.
   Each terminal window's winbar shows status, agent, name and space.
+                                                              *herdr-compose*
+- `gi` in a terminal (or its history), or `:Herdr compose`, opens a compose
+  split: edit the agent's input with full Neovim editing, then <CR> (normal)
+  or <C-s> sends it as one prompt (Herdr's agent.prompt; shells get the text
+  plus Enter). <C-g> pastes it into the agent's input without sending; q
+  closes and keeps the draft. Terminal buffers stay read-only.
 - Scrolling up (<C-u> <C-b> <PageUp> <C-y> k gg, mouse wheel) or searching
   (/ ?) opens a local, cached copy of the terminal's history (colors kept)
   where everything is native Neovim; i/a return to the live terminal and

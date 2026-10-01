@@ -179,8 +179,19 @@ local function setup_history_keys(buf)
     end
 end
 
+local function setup_compose_key(buf)
+    local key = config.options.terminal.compose
+    if key then
+        vim.keymap.set("n", key, function()
+            require("herdr.compose").open()
+        end, { buffer = buf, desc = "Compose agent input" })
+    end
+end
+M.setup_compose_key = setup_compose_key
+
 local function setup_keys(buf)
     setup_history_keys(buf)
+    setup_compose_key(buf)
     for dir, lhs in pairs(config.options.terminal.navigation or {}) do
         if lhs and NAV[dir] then
             vim.keymap.set("t", lhs, function()

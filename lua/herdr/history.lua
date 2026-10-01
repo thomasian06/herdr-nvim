@@ -267,6 +267,7 @@ function M.back(win, insert)
 end
 
 function M.setup_keys(buf)
+    require("herdr.terminal").setup_compose_key(buf)
     local function map(lhs, fn, desc)
         vim.keymap.set("n", lhs, fn, { buffer = buf, nowait = true, desc = desc })
     end
