@@ -12,6 +12,7 @@ local function set_keymaps()
         { keys.pick, "<cmd>Herdr pick<cr>", "Herdr pick space/agent" },
         { keys.connect, "<cmd>Herdr connect<cr>", "Herdr connect" },
         { keys.new_space, "<cmd>Herdr new-space<cr>", "Herdr new space" },
+        { keys.compose, "<cmd>Herdr compose<cr>", "Herdr compose agent input" },
     }
     for _, d in ipairs(defs) do
         if d[1] then

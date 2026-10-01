@@ -37,30 +37,48 @@ Options (defaults shown):                                     *herdr-options* >l
       remote = nil,            -- optional SSH target offered as a profile
       session = "main",        -- session for `remote`
       profiles = {},           -- { { name = "devbox", remote = "devbox" } }
+      projects_dir = nil,      -- where new spaces start ("~" = server home)
       status_style = "herdr",  -- Herdr's [ui] status_indicators, or
                                -- "dots" / "symbols"
       mark_seen = "local",     -- "local", or "herdr" to also tell Herdr
-      projects_dir = nil,      -- where new spaces start ("~" = server home);
-                               -- profiles can set their own `projects_dir`
       auto_start = "ask",      -- start a missing server: "ask"|true|false
       remote_attach = "auto",  -- "auto" | "ssh" (see |herdr-requirements|)
-      herdr_bin = "herdr",     -- local herdr binary
-      remote_path = { "$HOME/.local/bin" }, -- prepended to PATH remotely
-      keymaps = {              -- false disables a key (or all of them)
-        toggle = "<leader>aa",
-        pick = "<leader>ap",
-        connect = "<leader>ac",
-        new_space = "<leader>an",
-      },
+      herdr_bin = "herdr",
+      remote_path = { "$HOME/.local/bin" },
+      keymaps = { toggle = "<leader>aa", pick = "<leader>ap",
+        connect = "<leader>ac", new_space = "<leader>an",
+        compose = "<leader>ai" },
+      tree = { width = nil, position = nil, icons = nil, indent = nil,
+        keys = { ... } },      -- see |herdr-keys|
+      picker = { keys = { ... } },
+      terminal = { auto_insert = true, winbar = true, keys = { ... } },
+      history = { enabled = true, limit = 100000, keys = { ... } },
+      compose = { height = 8, keys = { ... } },
       notify = { enabled = true, sound = "herdr", message = true,
         on = { done = true, blocked = true } },
-      terminal = {             -- <Esc> -> normal mode, auto insert,
-        esc = "normal", auto_insert = true, winbar = true,
-      },
-      tree = {                 -- unset values borrowed from your explorer
-        width = nil, position = nil, icons = nil, indent = nil,
-      },
     })
+<
+                                                                 *herdr-keys*
+Every key is configurable. Key tables map a key to an action name; `false`
+disables a default; `{ "action", mode = { "n", "i" } }` picks the modes. Your
+keys merge with the defaults (full defaults in the README). Actions:
+
+  tree      open expand collapse vsplit split tab takeover open_all add
+            add_space rename delete focus connect collapse_all refresh close
+            help
+  picker    vsplit split tab focus
+  terminal  normal_mode nav_left nav_down nav_up nav_right history_wheel
+            history_half_page history_page history_line history_up
+            history_top history_search history_search_back compose
+  history   live_insert live compose
+  compose   send paste close
+
+Example: >lua
+    opts = {
+      keymaps = { compose = "<leader>ae" },
+      tree = { keys = { x = "delete", d = false } },
+      terminal = { keys = { ["<C-l>"] = false, gi = "compose" } },
+    }
 <
 The tree borrows icons, indent guides, width and side from snacks.nvim's
 explorer or neo-tree when present.
@@ -204,12 +222,12 @@ Run `:checkhealth herdr` to check the current connection.
 - Terminal buffers of panes closed in Herdr are removed automatically.
 - In a herdr terminal, <Esc> leaves terminal mode and is not sent to the
   agent; give agents that interrupt on <Esc> another key (see the README for
-  pi), or set `terminal.esc = "passthrough"`. Entering a herdr terminal window
+  pi), or disable it: `terminal = { keys = { ["<Esc>"] = false } }`. Entering a herdr terminal window
   enters terminal mode.
   Each terminal window's winbar shows status, agent, name and space.
                                                               *herdr-compose*
-- `gi` in a terminal (or its history), or `:Herdr compose`, opens a compose
-  split: edit the agent's input with full Neovim editing, then <CR> (normal)
+- <leader>ai (or `:Herdr compose`) opens a compose split for the current
+  terminal, the last one used, or an agent you pick: edit the agent's input with full Neovim editing, then <CR> (normal)
   or <C-s> sends it as one prompt (Herdr's agent.prompt; shells get the text
   plus Enter). <C-g> pastes it into the agent's input without sending; q
   closes and keeps the draft. Terminal buffers stay read-only.
@@ -221,7 +239,7 @@ Run `:checkhealth herdr` to check the current connection.
   background and keeps everything since the terminal was opened.
 - <C-h/j/k/l> navigate windows from terminal mode (through vim-tmux-navigator
   or smart-splits.nvim when installed, so edges reach tmux panes). Set
-  `terminal.navigation = false` if an agent needs those keys.
+  disable/remap them in `terminal.keys` if an agent needs those keys.
 
 ==============================================================================
 9. EVENTS                                                      *herdr-events*

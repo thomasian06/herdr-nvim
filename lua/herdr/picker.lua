@@ -168,6 +168,36 @@ local function preview_pane(ctx)
     end)
 end
 
+-- Picker actions for `picker.keys` -> snacks action names.
+local PICKER_ACTIONS = {
+    vsplit = { "herdr_vsplit", "Open in vsplit" },
+    split = { "herdr_split", "Open in split" },
+    tab = { "herdr_tab", "Open in tab" },
+    focus = { "herdr_focus", "Focus in herdr" },
+}
+
+local function picker_keys()
+    local out = {}
+    for lhs, spec in pairs(require("herdr.config").options.picker.keys or {}) do
+        if spec then
+            local name, mode = spec, nil
+            if type(spec) == "table" then
+                name, mode = spec[1], spec.mode
+            end
+            local a = PICKER_ACTIONS[name]
+            if a then
+                out[lhs] = { a[1], mode = mode or { "n", "i" }, desc = a[2] }
+            else
+                vim.notify(
+                    ("herdr: unknown picker action %q for key %s"):format(tostring(name), lhs),
+                    vim.log.levels.WARN
+                )
+            end
+        end
+    end
+    return out
+end
+
 local function open_snacks(opts)
     local style_mod = require("herdr.style")
     style_mod.define_highlights()
@@ -271,16 +301,7 @@ local function open_snacks(opts)
                 end)
             end,
         },
-        win = {
-            input = {
-                keys = {
-                    ["<c-v>"] = { "herdr_vsplit", mode = { "n", "i" }, desc = "Open in vsplit" },
-                    ["<c-s>"] = { "herdr_split", mode = { "n", "i" }, desc = "Open in split" },
-                    ["<c-t>"] = { "herdr_tab", mode = { "n", "i" }, desc = "Open in tab" },
-                    ["<a-f>"] = { "herdr_focus", mode = { "n", "i" }, desc = "Focus in herdr" },
-                },
-            },
-        },
+        win = { input = { keys = picker_keys() } },
         on_close = function()
             if off then
                 off()

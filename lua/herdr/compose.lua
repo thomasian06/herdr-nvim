@@ -107,34 +107,110 @@ local function draft_buf(pane)
     pcall(vim.api.nvim_buf_set_name, buf, "herdr-compose://" .. pane.pane_id)
     vim.b[buf].herdr_pane_id = pane.pane_id
     drafts[pane.pane_id] = buf
-    local function map(modes, lhs, fn, desc)
-        vim.keymap.set(modes, lhs, fn, { buffer = buf, desc = desc, nowait = true })
-    end
-    map("n", "<CR>", function()
-        M.submit(buf)
-    end, "Send to agent")
-    map({ "n", "i" }, "<C-s>", function()
-        vim.cmd("stopinsert")
-        M.submit(buf)
-    end, "Send to agent")
-    map({ "n", "i" }, "<C-g>", function()
-        vim.cmd("stopinsert")
-        M.paste(buf)
-    end, "Paste into agent input (no submit)")
-    map("n", "q", function()
-        close(buf, false)
-    end, "Close (keep draft)")
+    require("herdr.keys").apply(buf, config.options.compose.keys, {
+        send = {
+            desc = "Send to agent",
+            fn = function()
+                vim.cmd("stopinsert")
+                M.submit(buf)
+            end,
+        },
+        paste = {
+            desc = "Paste into agent input (no submit)",
+            fn = function()
+                vim.cmd("stopinsert")
+                M.paste(buf)
+            end,
+        },
+        close = {
+            desc = "Close (keep draft)",
+            fn = function()
+                close(buf, false)
+            end,
+        },
+    })
     return buf
 end
 
---- Open the compose split for the herdr terminal (or history view) in the
---- current window, or for `pane_id`.
+--- The pane to compose for when none is given: the current window's terminal,
+--- else the last herdr terminal used in this tab. Returns pane_id, window
+--- showing it (or the current window).
+local function current_target()
+    local cur = vim.api.nvim_get_current_win()
+    local id = vim.b.herdr_pane_id
+    if id and not vim.b.herdr_compose_from then
+        return id, cur
+    end
+    id = require("herdr.terminal").last_pane[vim.api.nvim_get_current_tabpage()]
+    if not (id and state.pane(id)) then
+        return nil
+    end
+    for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+        if vim.b[vim.api.nvim_win_get_buf(win)].herdr_pane_id == id then
+            return id, win
+        end
+    end
+    return id, cur
+end
+
+--- Ask which agent to compose for (agents first, then other terminals).
+local function pick_target(cb)
+    local panes = {}
+    for _, p in ipairs(state.snapshot and state.snapshot.panes or {}) do
+        panes[#panes + 1] = p
+    end
+    table.sort(panes, function(a, b)
+        return (a.agent and 0 or 1) < (b.agent and 0 or 1)
+    end)
+    vim.ui.select(panes, {
+        prompt = "herdr: compose for",
+        format_item = function(p)
+            local ws = state.workspace(p.workspace_id)
+            local agent = p.display_agent or p.agent
+            return string.format(
+                "%s %s%s  [%s]",
+                state.status_icon(state.pane_status(p)),
+                pane_name(p),
+                agent and ("  " .. agent) or "",
+                ws and ws.label or p.workspace_id
+            )
+        end,
+    }, function(p)
+        if p then
+            cb(p.pane_id)
+        end
+    end)
+end
+
+--- Open the compose split: for `pane_id`, else the terminal in the current
+--- window, else the last herdr terminal used in this tab, else ask.
 function M.open(pane_id)
     local from_win = vim.api.nvim_get_current_win()
-    pane_id = pane_id or vim.b[vim.api.nvim_get_current_buf()].herdr_pane_id
-    local pane = pane_id and state.pane(pane_id)
+    if not pane_id then
+        local id, win = current_target()
+        if not id then
+            local connection = require("herdr.connection")
+            return connection.with_connection(function()
+                state.when_snapshot(function(snap)
+                    if snap then
+                        pick_target(M.open)
+                    end
+                end)
+            end)
+        end
+        pane_id, from_win = id, win or from_win
+        vim.api.nvim_set_current_win(from_win)
+    end
+    local pane = state.pane(pane_id)
     if not pane then
-        return vim.notify("herdr: not in a herdr terminal", vim.log.levels.WARN)
+        return vim.notify("herdr: unknown pane " .. tostring(pane_id), vim.log.levels.WARN)
+    end
+    -- Composing for a picked agent that is open somewhere: split under it.
+    local shown = require("herdr.terminal").buffers[pane.terminal_id]
+    local shown_win = shown and vim.fn.win_findbuf(shown)[1]
+    if shown_win and vim.api.nvim_win_get_tabpage(shown_win) == vim.api.nvim_get_current_tabpage() then
+        from_win = shown_win
+        vim.api.nvim_set_current_win(shown_win)
     end
     local buf = draft_buf(pane)
     vim.b[buf].herdr_compose_from = from_win
@@ -142,13 +218,22 @@ function M.open(pane_id)
     if existing then
         vim.api.nvim_set_current_win(existing)
     else
-        vim.cmd("belowright " .. (config.options.terminal.compose_height or 8) .. "split")
+        vim.cmd("belowright " .. (config.options.compose.height or 8) .. "split")
         vim.api.nvim_win_set_buf(0, buf)
         local wo = vim.wo[0][0]
         wo.winfixheight = true
+        local by = require("herdr.keys").by_action(config.options.compose.keys)
+        local hints = {}
+        for _, h in ipairs({ { "send", "send" }, { "paste", "paste without sending" }, { "close", "close" } }) do
+            if by[h[1]] then
+                hints[#hints + 1] = table.concat(by[h[1]], "/") .. " " .. h[2]
+            end
+        end
         wo.winbar = "%#HerdrAgentIcon# ✎ %*%#HerdrFocused#"
             .. pane_name(pane):gsub("%%", "%%%%")
-            .. "%*%#HerdrMuted#   <CR>/<C-s> send · <C-g> paste without sending · q close%*"
+            .. "%*%#HerdrMuted#   "
+            .. table.concat(hints, " · "):gsub("%%", "%%%%")
+            .. "%*"
     end
     vim.cmd("startinsert!")
 end

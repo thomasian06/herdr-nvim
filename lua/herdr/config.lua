@@ -27,6 +27,7 @@ M.defaults = {
         pick = "<leader>ap", -- spaces/agents picker
         connect = "<leader>ac", -- connect to a server/profile
         new_space = "<leader>an", -- create a space and open its terminal
+        compose = "<leader>ai", -- compose input for an agent (the current/last terminal, else pick)
     },
     -- Herdr binary for local mode.
     herdr_bin = "herdr",
@@ -39,6 +40,48 @@ M.defaults = {
         position = nil, -- "left" | "right"
         icons = nil, -- e.g. { agent = "A ", shell = "$ " }
         indent = nil, -- e.g. { vertical = "| ", middle = "|-", last = "`-" }
+        -- Keys in the tree: lhs = action (false disables a default). Actions:
+        -- open, expand, collapse, vsplit, split, tab, takeover, open_all, add,
+        -- add_space, rename, delete, focus, connect, collapse_all, refresh,
+        -- close, help.
+        keys = {
+            ["<CR>"] = "open",
+            ["o"] = "open",
+            ["<2-LeftMouse>"] = "open",
+            ["l"] = "expand",
+            ["h"] = "collapse",
+            ["s"] = "vsplit",
+            ["<C-v>"] = "vsplit",
+            ["S"] = "split",
+            ["<C-s>"] = "split",
+            ["t"] = "tab",
+            ["<C-t>"] = "tab",
+            ["T"] = "takeover",
+            ["O"] = "open_all",
+            ["a"] = "add",
+            ["A"] = "add_space",
+            ["r"] = "rename",
+            ["d"] = "delete",
+            ["f"] = "focus",
+            ["C"] = "connect",
+            ["z"] = "collapse_all",
+            ["Z"] = "collapse_all",
+            ["R"] = "refresh",
+            ["u"] = "refresh",
+            ["q"] = "close",
+            ["?"] = "help",
+            ["g?"] = "help",
+        },
+    },
+    -- Keys in the snacks.nvim picker (insert and normal mode). Actions:
+    -- vsplit, split, tab, focus. <CR> opens, <Tab> marks several.
+    picker = {
+        keys = {
+            ["<c-v>"] = "vsplit",
+            ["<c-s>"] = "split",
+            ["<c-t>"] = "tab",
+            ["<a-f>"] = "focus",
+        },
     },
     -- Status glyphs: "herdr" follows Herdr's [ui] status_indicators; or "dots" /
     -- "symbols".
@@ -58,34 +101,65 @@ M.defaults = {
     },
     -- Herdr terminal buffers.
     terminal = {
-        -- <Esc> in herdr terminals:
-        --   "normal"       leaves terminal mode; never sent to the agent. Move an
-        --                  agent that interrupts on <Esc> to another key (see
-        --                  the README, e.g. pi's app.interrupt -> ctrl+c)
-        --   "passthrough"  always goes to the agent (leave terminal mode with
-        --                  <C-\><C-n>)
-        esc = "normal",
         -- Enter terminal mode when entering a herdr terminal window.
         auto_insert = true,
         -- Show agent, name, status and space in each terminal window's winbar.
         winbar = true,
-        -- Navigate windows straight from terminal mode with these keys (false to
-        -- disable, e.g. if an agent needs them). Uses vim-tmux-navigator or
-        -- smart-splits.nvim when installed (so edges continue into tmux panes),
-        -- else plain window moves.
-        navigation = { left = "<C-h>", down = "<C-j>", up = "<C-k>", right = "<C-l>" },
-        -- Scrolling up (<C-u>, <C-b>, <PageUp>, <C-y>, k, gg, mouse wheel) or
-        -- searching (/, ?) opens a local, cached copy of the terminal's history
-        -- where everything is native Neovim; i/a/q/<Esc> return to the live
-        -- terminal. The cache syncs in the background while attached.
-        history = true,
-        -- Most lines kept per terminal's history cache.
-        history_limit = 100000,
-        -- Normal-mode key in a herdr terminal (or its history) that opens a
-        -- compose split: write the agent's input with full Neovim editing,
-        -- then send it. false to disable.
-        compose = "gi",
-        compose_height = 8,
+        -- Keys in herdr terminal buffers: lhs = action (false disables a
+        -- default; { "action", mode = ... } sets the modes). Actions:
+        --   normal_mode (t)            leave terminal mode; the key is not sent
+        --                              to the agent (give agents that interrupt
+        --                              on <Esc> another key, see the README)
+        --   nav_left/down/up/right (t) move to the neighboring window (through
+        --                              vim-tmux-navigator / smart-splits.nvim)
+        --   history_wheel (n,t), history_half_page, history_page, history_line,
+        --   history_up, history_top, history_search, history_search_back (n)
+        --                              open the cached history and scroll/search
+        --   compose (n)                compose input (also global <leader>ai)
+        keys = {
+            ["<Esc>"] = "normal_mode",
+            ["<C-h>"] = "nav_left",
+            ["<C-j>"] = "nav_down",
+            ["<C-k>"] = "nav_up",
+            ["<C-l>"] = "nav_right",
+            ["<ScrollWheelUp>"] = "history_wheel",
+            ["<C-u>"] = "history_half_page",
+            ["<C-b>"] = "history_page",
+            ["<PageUp>"] = "history_page",
+            ["<C-y>"] = "history_line",
+            ["k"] = "history_up",
+            ["gg"] = "history_top",
+            ["/"] = "history_search",
+            ["?"] = "history_search_back",
+        },
+    },
+    -- Local, cached terminal history (opened by the history_* terminal keys).
+    history = {
+        enabled = true,
+        -- Most lines kept per terminal.
+        limit = 100000,
+        -- Keys in the history view. Actions: live_insert (back to the live
+        -- terminal, typing), live (back to it), compose.
+        keys = {
+            ["i"] = "live_insert",
+            ["a"] = "live_insert",
+            ["I"] = "live_insert",
+            ["A"] = "live_insert",
+            ["q"] = "live",
+            ["<Esc>"] = "live",
+        },
+    },
+    -- Compose split (<leader>ai): edit an agent's input with full Neovim editing.
+    compose = {
+        height = 8,
+        -- Actions: send (as a prompt), paste (into the agent's input without
+        -- sending), close (keep the draft).
+        keys = {
+            ["<CR>"] = "send",
+            ["<C-s>"] = { "send", mode = { "n", "i" } },
+            ["<C-g>"] = { "paste", mode = { "n", "i" } },
+            ["q"] = "close",
+        },
     },
     -- Debounce for re-fetching the session snapshot after server events (ms).
     refresh_debounce_ms = 80,

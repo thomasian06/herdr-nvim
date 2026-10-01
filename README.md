@@ -32,7 +32,7 @@ On the machine running Neovim:
 
 On the remote machine:
 
-- Herdr 0.9.0+ (tested with 0.9.0 to 0.9.3), on the SSH session's `PATH` or in `~/.local/bin` (see `remote_path`)
+- Herdr 0.9.0+ (CI tests the latest release), on the SSH session's `PATH` or in `~/.local/bin` (see `remote_path`)
 - A Herdr server for the session. herdr-nvim offers to start it when it is not running (`auto_start`)
 - SSH unix-socket forwarding allowed (OpenSSH's default `AllowStreamLocalForwarding yes`)
 
@@ -56,6 +56,10 @@ Other plugin managers: add `thomasian06/herdr-nvim` and call `require("herdr").s
 
 ### Options
 
+Defaults shown; set only what you change.
+Every key is configurable: key tables map a key to an action name, `false` disables a default, and `{ "action", mode = { "n", "i" } }` picks the modes.
+Your keys merge with the defaults.
+
 ```lua
 require("herdr").setup({
   remote = nil, -- optional SSH target offered as a profile (nothing connects automatically)
@@ -68,38 +72,82 @@ require("herdr").setup({
   remote_attach = "auto", -- "auto" (local herdr via forwarded socket when possible) | "ssh"
   herdr_bin = "herdr", -- local herdr binary
   remote_path = { "$HOME/.local/bin" }, -- prepended to PATH on the remote
+
+  -- Global keys (false disables one, or all with `keymaps = false`)
   keymaps = {
     toggle = "<leader>aa", -- toggle the tree
     pick = "<leader>ap", -- spaces/agents picker
     connect = "<leader>ac", -- connect to a server/profile
     new_space = "<leader>an", -- create a space and open its terminal
-  }, -- set a key (or all of `keymaps`) to false to disable
+    compose = "<leader>ai", -- compose input for an agent
+  },
+
+  tree = { -- unset look options are borrowed from your file explorer
+    width = nil, position = nil, icons = nil, indent = nil,
+    keys = {
+      ["<CR>"] = "open", o = "open", ["<2-LeftMouse>"] = "open",
+      l = "expand", h = "collapse",
+      s = "vsplit", ["<C-v>"] = "vsplit", S = "split", ["<C-s>"] = "split", t = "tab", ["<C-t>"] = "tab",
+      T = "takeover", O = "open_all",
+      a = "add", A = "add_space", r = "rename", d = "delete",
+      f = "focus", C = "connect",
+      z = "collapse_all", Z = "collapse_all", R = "refresh", u = "refresh",
+      q = "close", ["?"] = "help", ["g?"] = "help",
+    },
+  },
+
+  picker = { -- snacks.nvim picker (insert and normal mode)
+    keys = { ["<c-v>"] = "vsplit", ["<c-s>"] = "split", ["<c-t>"] = "tab", ["<a-f>"] = "focus" },
+  },
+
+  terminal = {
+    auto_insert = true, -- entering a herdr terminal window enters terminal mode
+    winbar = true, -- status, agent, name and space above each terminal
+    keys = {
+      ["<Esc>"] = "normal_mode", -- leave terminal mode (not sent to the agent)
+      ["<C-h>"] = "nav_left", ["<C-j>"] = "nav_down", ["<C-k>"] = "nav_up", ["<C-l>"] = "nav_right",
+      ["<ScrollWheelUp>"] = "history_wheel",
+      ["<C-u>"] = "history_half_page", ["<C-b>"] = "history_page", ["<PageUp>"] = "history_page",
+      ["<C-y>"] = "history_line", k = "history_up", gg = "history_top",
+      ["/"] = "history_search", ["?"] = "history_search_back",
+      -- also available: compose (e.g. gi = "compose")
+    },
+  },
+
+  history = { -- local, cached terminal history
+    enabled = true,
+    limit = 100000, -- lines kept per terminal
+    keys = { i = "live_insert", a = "live_insert", I = "live_insert", A = "live_insert", q = "live", ["<Esc>"] = "live" },
+  },
+
+  compose = { -- compose split for agent input
+    height = 8,
+    keys = {
+      ["<CR>"] = "send",
+      ["<C-s>"] = { "send", mode = { "n", "i" } },
+      ["<C-g>"] = { "paste", mode = { "n", "i" } }, -- into the agent's input, without sending
+      q = "close", -- keep the draft
+    },
+  },
+
   notify = {
     enabled = true,
     sound = "herdr", -- follow Herdr's [ui.sound] settings; true: always; false: never
     message = true, -- also show a vim.notify message
     on = { done = true, blocked = true },
   },
-  terminal = {
-    esc = "normal", -- <Esc> leaves terminal mode ("passthrough": <Esc> goes to the agent)
-    auto_insert = true, -- entering a herdr terminal window enters terminal mode
-    winbar = true, -- status, agent, name and space above each terminal
-    -- navigate windows from terminal mode (vim-tmux-navigator / smart-splits aware); false to disable
-    navigation = { left = "<C-h>", down = "<C-j>", up = "<C-k>", right = "<C-l>" },
-    history = true, -- scrolling up / searching opens a local, cached copy of the history
-    history_limit = 100000, -- lines kept per terminal
-    compose = "gi", -- normal-mode key that opens the compose split (false to disable)
-    compose_height = 8,
-  },
-  tree = { -- unset values are borrowed from your file explorer
-    width = nil,
-    position = nil, -- "left" | "right"
-    icons = nil, -- e.g. { agent = "A ", shell = "$ ", space_open = "- ", space_closed = "+ " }
-    indent = nil, -- e.g. { vertical = "| ", middle = "|-", last = "`-" }
-  },
 })
 ```
 
+For example, with lazy.nvim:
+
+```lua
+opts = {
+  keymaps = { compose = "<leader>ae" },
+  tree = { keys = { x = "delete", d = false } },
+  terminal = { keys = { ["<C-l>"] = false, gi = "compose" } }, -- keep <C-l> for the agent
+}
+```
 
 ## Commands
 
@@ -110,7 +158,7 @@ require("herdr").setup({
 | `:Herdr open <pane_id>` | Open a terminal, e.g. `:Herdr open w1:p1` |
 | `:Herdr refresh` | Re-fetch the session snapshot |
 | `:Herdr agents` | Open every agent in the session, tiled in a new tab |
-| `:Herdr compose` | Compose input for the terminal in the current window (`gi`) |
+| `:Herdr compose` | Compose input for an agent (`<leader>ai`) |
 | `:Herdr new-space [name]` | Create a space and open its terminal (`<leader>an`); it starts in `projects_dir` when set |
 | `:Herdr connect [profile\|host[:session]]` | Connect to a server; without an argument, pick one |
 | `:Herdr disconnect` | Disconnect |
@@ -227,7 +275,7 @@ To keep buffer tabs to the right of the tree (like with neo-tree or snacks' expl
 
 ## Working in agent terminals
 
-- `gi` (normal mode in a terminal or its history, or `:Herdr compose`) opens a compose split: write the agent's input with full Neovim editing, then `<CR>` (normal mode) or `<C-s>` sends it as one prompt (Herdr's `agent.prompt`: pasted as a block, then submitted; shells get the text plus Enter). `<C-g>` pastes it into the agent's own input without sending; `q` closes and keeps the draft (one per terminal). Terminal buffers themselves stay read-only: normal mode there is for viewing and yanking.
+- `<leader>ai` (or `:Herdr compose`) opens a compose split for the terminal in the current window, the last terminal you used, or an agent you pick: write the agent's input with full Neovim editing, then `<CR>` (normal mode) or `<C-s>` sends it as one prompt (Herdr's `agent.prompt`: pasted as a block, then submitted; shells get the text plus Enter). `<C-g>` pastes it into the agent's own input without sending; `q` closes and keeps the draft (one per terminal). Terminal buffers themselves stay read-only: normal mode there is for viewing and yanking.
 - `<Esc>` leaves terminal mode and is not sent to the agent. Agents that interrupt on `<Esc>` need another interrupt key; for [pi](https://github.com/earendil-works/pi-coding-agent), in `~/.pi/agent/keybindings.json` on the machine running the agents:
 
   ```json
@@ -238,10 +286,10 @@ To keep buffer tabs to the right of the tree (like with neo-tree or snacks' expl
   }
   ```
 
-  `app.clear` moves off `ctrl+c` because its second press exits pi. Keeping `escape` too leaves Herdr's own UI unchanged. Set `terminal.esc = "passthrough"` to send `<Esc>` to the agent instead (then leave terminal mode with `<C-\><C-n>`).
+  `app.clear` moves off `ctrl+c` because its second press exits pi. Keeping `escape` too leaves Herdr's own UI unchanged. Set `terminal = { keys = { ["<Esc>"] = false } }` to send `<Esc>` to the agent instead (then leave terminal mode with `<C-\><C-n>`).
 - `<C-h/j/k/l>` move between windows straight from terminal mode, and entering a herdr terminal window puts you back into terminal mode, so you can hop between agents and type without leaving terminal mode.
   With [vim-tmux-navigator](https://github.com/christoomey/vim-tmux-navigator) or [smart-splits.nvim](https://github.com/mrjones2014/smart-splits.nvim) installed, the edges continue into tmux (or WezTerm/Kitty) panes.
-  Agents no longer receive those keys; set `terminal.navigation = false` (or pick other keys) if one needs them.
+  Agents no longer receive those keys; disable or remap them in `terminal.keys` if one needs them.
 - Scrolling up (`<C-u>`, `<C-b>`, `<PageUp>`, `<C-y>`, `k`, `gg`, mouse wheel) or searching (`/`, `?`) opens the terminal's history in a local, read-only buffer with its colors, where scrolling, search and yank are plain Neovim with no network round trips. `i`/`a` return to the live terminal and type; `q`/`<Esc>` return to it.
   A terminal buffer itself only holds the current screen (Herdr repaints it in place), so herdr-nvim keeps a history cache per terminal: the first open loads the latest 1000 lines (the most Herdr returns per read), and while a terminal is attached the cache syncs in the background, so it keeps everything since you opened it. If more output arrives between syncs than Herdr returns, the cache marks the gap.
 - Each terminal window's winbar shows its status, agent, name and space, so a grid of agents stays readable.
@@ -263,7 +311,7 @@ To keep buffer tabs to the right of the tree (like with neo-tree or snacks' expl
 ```sh
 make check        # StyLua + selene + lua-language-server + tests (what CI runs)
 make test         # unit, UI and integration tests
-make test-matrix  # every locked Neovim x Herdr version
+make test-matrix  # the latest Neovim 0.10, 0.11 and 0.12 against the locked Herdr
 make fmt          # format
 pre-commit install  # run formatting, lint and type checks on every commit
 ```

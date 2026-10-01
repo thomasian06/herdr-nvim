@@ -1,35 +1,5 @@
 {
   "herdr": {
-    "0.9.0": {
-      "linux-x86_64": {
-        "sha256": "4fa1a01158dd8043da92d31b270780b0dcc10603038d9b61cac4d81ab63fb71f",
-        "url": "https://github.com/herdrdev/herdr/releases/download/v0.9.0/herdr-linux-x86_64"
-      },
-      "macos-aarch64": {
-        "sha256": "32b53df09872628059c789a69f02a6b8e29e14ddf26711421f3463f70c1aef17",
-        "url": "https://github.com/herdrdev/herdr/releases/download/v0.9.0/herdr-macos-aarch64"
-      }
-    },
-    "0.9.1": {
-      "linux-x86_64": {
-        "sha256": "2a02fed16beb651ef006e1d43f048f652ca4dc58ad053cd2d44450563d5c54b7",
-        "url": "https://github.com/herdrdev/herdr/releases/download/v0.9.1/herdr-linux-x86_64"
-      },
-      "macos-aarch64": {
-        "sha256": "5fc7a7e7adfaca56fa80aa89dcb025693357268dab8285b9ce2d08a2313c89de",
-        "url": "https://github.com/herdrdev/herdr/releases/download/v0.9.1/herdr-macos-aarch64"
-      }
-    },
-    "0.9.2": {
-      "linux-x86_64": {
-        "sha256": "74de34746f96236f76d599f8f5d2439f884351eabe25b7495e0edab75414064a",
-        "url": "https://github.com/herdrdev/herdr/releases/download/v0.9.2/herdr-linux-x86_64"
-      },
-      "macos-aarch64": {
-        "sha256": "e5dae9c7d93010968897de10c6e9ea2aacb14965f7b9e3b3d061dba82d2a1944",
-        "url": "https://github.com/herdrdev/herdr/releases/download/v0.9.2/herdr-macos-aarch64"
-      }
-    },
     "0.9.3": {
       "linux-x86_64": {
         "sha256": "18a8dc65f1c2fa485884344356dea1cfd911c6f06cf46fa78e193f4087f4dba7",

@@ -19,7 +19,7 @@ end
 T["setup: default keymaps and command"] = function()
     child.lua([[require("herdr").setup({})]])
     eq(child.fn.exists(":Herdr"), 2)
-    for _, lhs in ipairs({ "<leader>aa", "<leader>ap", "<leader>ac", "<leader>an" }) do
+    for _, lhs in ipairs({ "<leader>aa", "<leader>ap", "<leader>ac", "<leader>an", "<leader>ai" }) do
         eq(child.fn.maparg(lhs, "n") ~= "", true)
     end
 end
@@ -27,6 +27,28 @@ end
 T["setup: keymaps can be disabled"] = function()
     child.lua([[require("herdr").setup({ keymaps = false })]])
     eq(child.fn.maparg("<leader>aa", "n"), "")
+end
+
+T["keys are configurable: remap, disable, and help follows"] = function()
+    child.lua([[require("herdr").setup({ tree = { keys = { x = "delete", d = false, ["?"] = "help" } } })]])
+    child.cmd("Herdr")
+    local maps = child.lua_get([[vim.tbl_map(function(m) return m.lhs end, vim.api.nvim_buf_get_keymap(0, "n"))]])
+    eq(vim.tbl_contains(maps, "x"), true)
+    eq(vim.tbl_contains(maps, "d"), false)
+    eq(vim.tbl_contains(maps, "<CR>"), true) -- untouched defaults stay
+    child.type_keys("?")
+    local help = table.concat(child.api.nvim_buf_get_lines(0, 0, -1, false), "\n")
+    eq(help:find("x%s+close in herdr") ~= nil, true)
+end
+
+T["unknown key actions warn instead of failing"] = function()
+    child.lua([[
+        _G.msgs = {}
+        vim.notify = function(m) table.insert(_G.msgs, m) end
+        require("herdr").setup({ tree = { keys = { y = "no_such_action" } } })
+    ]])
+    child.cmd("Herdr")
+    eq(child.lua_get("_G.msgs[1]"):find("no_such_action", 1, true) ~= nil, true)
 end
 
 T["tree starts disconnected"] = function()

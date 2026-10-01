@@ -483,29 +483,65 @@ function actions.focus_in_herdr()
     api.request(method, { [kind .. "_id"] = node.id }, done(method))
 end
 
-local HELP = {
-    { "<CR> o", "open terminal / toggle space" },
-    { "l h", "expand / collapse (or go to parent)" },
-    { "s <C-v>", "open in vertical split" },
-    { "S <C-s>", "open in horizontal split" },
-    { "t <C-t>", "open in new tab" },
-    { "T", "open, taking over another attach" },
-    { "O", "open all terminals here, tiled (root: all agents)" },
-    { "a", "add terminal to space (on root: add space)" },
-    { "A", "add space" },
-    { "r", "rename" },
-    { "d", "close in herdr" },
-    { "f", "focus in herdr's own UI" },
-    { "C", "connect to another server/profile" },
-    { "z Z", "collapse all" },
-    { "R u", "refresh" },
-    { "q", "close tree" },
+-- Tree actions for `tree.keys`, in help order: name -> { description, fn }.
+local ACTIONS = {
+    { "open", "open terminal / toggle space", actions.open() },
+    { "expand", "expand (or open a terminal)", actions.expand },
+    { "collapse", "collapse (or go to parent)", actions.collapse },
+    { "vsplit", "open in vertical split", actions.open("vsplit") },
+    { "split", "open in horizontal split", actions.open("split") },
+    { "tab", "open in new tab", actions.open("tab") },
+    { "takeover", "open, taking over another attach", actions.open("current", true) },
+    { "open_all", "open all terminals here, tiled (root: all agents)", actions.open_all },
+    { "add", "add terminal to space (on root: add space)", actions.add },
+    {
+        "add_space",
+        "add space",
+        function()
+            actions.add_space()
+        end,
+    },
+    { "rename", "rename", actions.rename },
+    { "delete", "close in herdr", actions.delete },
+    { "focus", "focus in herdr's own UI", actions.focus_in_herdr },
+    {
+        "connect",
+        "connect to another server/profile",
+        function()
+            require("herdr.connection").pick()
+        end,
+    },
+    { "collapse_all", "collapse all", actions.collapse_all },
+    {
+        "refresh",
+        "refresh",
+        function()
+            state.refresh()
+        end,
+    },
+    {
+        "close",
+        "close tree",
+        function()
+            M.close()
+        end,
+    },
+    {
+        "help",
+        "help",
+        function()
+            actions.help()
+        end,
+    },
 }
 
 function actions.help()
+    local by = require("herdr.keys").by_action(require("herdr.config").options.tree.keys)
     local lines = { " herdr tree", "" }
-    for _, h in ipairs(HELP) do
-        lines[#lines + 1] = string.format("  %-9s %s", h[1], h[2])
+    for _, a in ipairs(ACTIONS) do
+        if by[a[1]] and a[1] ~= "help" then
+            lines[#lines + 1] = string.format("  %-14s %s", table.concat(by[a[1]], " "), a[2])
+        end
     end
     local hbuf = vim.api.nvim_create_buf(false, true)
     vim.api.nvim_buf_set_lines(hbuf, 0, -1, false, lines)
@@ -526,7 +562,9 @@ function actions.help()
         title_pos = "center",
     })
     vim.api.nvim_buf_set_extmark(hbuf, ns, 0, 0, { end_col = #lines[1], hl_group = "Title" })
-    for _, key in ipairs({ "q", "<Esc>", "?" }) do
+    local close_keys = { "q", "<Esc>" }
+    vim.list_extend(close_keys, by.help or {})
+    for _, key in ipairs(close_keys) do
         vim.keymap.set("n", key, function()
             pcall(vim.api.nvim_win_close, hwin, true)
         end, { buffer = hbuf, nowait = true })
@@ -541,35 +579,11 @@ local function setup_buffer()
     vim.bo[buf].filetype = "herdr"
     vim.bo[buf].bufhidden = "hide"
     vim.bo[buf].modifiable = false
-    local function map(keys, fn)
-        for _, lhs in ipairs(type(keys) == "table" and keys or { keys }) do
-            vim.keymap.set("n", lhs, fn, { buffer = buf, nowait = true, silent = true })
-        end
+    local tree_actions = {}
+    for _, a in ipairs(ACTIONS) do
+        tree_actions[a[1]] = { desc = "herdr: " .. a[2], fn = a[3] }
     end
-    map({ "<CR>", "o", "<2-LeftMouse>" }, actions.open())
-    map("l", actions.expand)
-    map("h", actions.collapse)
-    map({ "s", "<C-v>" }, actions.open("vsplit"))
-    map({ "S", "<C-s>" }, actions.open("split"))
-    map({ "t", "<C-t>" }, actions.open("tab"))
-    map("T", actions.open("current", true))
-    map("O", actions.open_all)
-    map("a", actions.add)
-    map("A", function()
-        actions.add_space()
-    end)
-    map("r", actions.rename)
-    map("d", actions.delete)
-    map("f", actions.focus_in_herdr)
-    map("C", function()
-        require("herdr.connection").pick()
-    end)
-    map({ "z", "Z" }, actions.collapse_all)
-    map({ "R", "u" }, state.refresh)
-    map("q", function()
-        M.close()
-    end)
-    map({ "?", "g?" }, actions.help)
+    require("herdr.keys").apply(buf, require("herdr.config").options.tree.keys, tree_actions)
 end
 
 function M.open()

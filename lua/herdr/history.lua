@@ -108,7 +108,7 @@ local function merge(c, text, rows, full)
     c.screen = screen
     c.rows = rows
     c.dirty = true
-    local limit = config.options.terminal.history_limit or 100000
+    local limit = config.options.history.limit or 100000
     local excess = #c.stable - limit
     if excess > 0 then
         for _ = 1, excess do
@@ -267,20 +267,21 @@ function M.back(win, insert)
 end
 
 function M.setup_keys(buf)
-    require("herdr.terminal").setup_compose_key(buf)
-    local function map(lhs, fn, desc)
-        vim.keymap.set("n", lhs, fn, { buffer = buf, nowait = true, desc = desc })
-    end
-    for _, lhs in ipairs({ "i", "a", "I", "A" }) do
-        map(lhs, function()
-            M.back(nil, true)
-        end, "Back to the live terminal (insert)")
-    end
-    for _, lhs in ipairs({ "q", "<Esc>" }) do
-        map(lhs, function()
-            M.back(nil, false)
-        end, "Back to the live terminal")
-    end
+    require("herdr.keys").apply(buf, config.options.history.keys, {
+        live_insert = {
+            desc = "Back to the live terminal (insert)",
+            fn = function()
+                M.back(nil, true)
+            end,
+        },
+        live = {
+            desc = "Back to the live terminal",
+            fn = function()
+                M.back(nil, false)
+            end,
+        },
+        compose = require("herdr.terminal").actions().compose,
+    })
 end
 
 --- Open the history view for the live herdr terminal in the current window,
@@ -354,7 +355,7 @@ local sync_timer
 
 local function sync_attached()
     local terminal = package.loaded["herdr.terminal"]
-    if not terminal or not config.options.terminal.history then
+    if not terminal or not config.options.history.enabled then
         return
     end
     local now = vim.uv.now()

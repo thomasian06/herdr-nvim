@@ -173,12 +173,12 @@ T["picker lists spaces and terminals"] = function()
     child.lua([[Snacks.picker.get()[1]:close()]])
 end
 
-T["gi composes input in a buffer and sends it"] = function()
+T["<leader>ai composes input in a buffer and sends it"] = function()
     local pane = server.space("lambda").root_pane.pane_id
     child.lua([[require("herdr").open(...)]], { pane })
     H.wait_child(child, ([[require("herdr.terminal").attached_panes()[%q] ~= nil]]):format(pane))
     child.cmd("stopinsert")
-    child.type_keys("gi")
+    child.type_keys(" ai")
     H.wait_child(child, [[vim.api.nvim_buf_get_name(0):find("herdr%-compose://") ~= nil]])
     eq(child.fn.mode(), "i")
     child.type_keys("echo composed-$((1+1))", "<C-s>")
@@ -206,7 +206,7 @@ T["compose sends to an agent with agent.prompt"] = function()
     child.lua([[require("herdr").open(...)]], { pane })
     H.wait_child(child, ([[require("herdr.terminal").attached_panes()[%q] ~= nil]]):format(pane))
     child.cmd("stopinsert")
-    child.type_keys("gi", "echo prompted-$((2+3))", "<C-s>")
+    child.type_keys(" ai", "echo prompted-$((2+3))", "<C-s>")
     server.wait_output(pane, "prompted-5")
     eq(vim.tbl_contains(child.lua_get("_G.methods"), "agent.prompt"), true)
 end
@@ -248,12 +248,40 @@ T["a compose draft survives closing"] = function()
     child.lua([[require("herdr").open(...)]], { pane })
     H.wait_child(child, ([[require("herdr.terminal").attached_panes()[%q] ~= nil]]):format(pane))
     child.cmd("stopinsert")
-    child.type_keys("gi", "half a thought", "<Esc>", "q")
+    child.type_keys(" ai", "half a thought", "<Esc>", "q")
     H.wait_child(child, [[vim.b.herdr_terminal_id ~= nil]])
     child.cmd("stopinsert")
-    child.type_keys("gi")
+    child.type_keys(" ai")
     H.wait_child(child, [[vim.api.nvim_buf_get_name(0):find("herdr%-compose://") ~= nil]])
     eq(child.api.nvim_buf_get_lines(0, 0, -1, false), { "half a thought" })
+end
+
+T["<leader>ai from a code window composes for the last terminal"] = function()
+    local pane = server.space("omicron").root_pane.pane_id
+    child.lua([[require("herdr").open(...)]], { pane })
+    H.wait_child(child, ([[require("herdr.terminal").attached_panes()[%q] ~= nil]]):format(pane))
+    child.cmd("stopinsert")
+    child.cmd("vsplit | enew") -- a "code" window, terminal still visible
+    child.type_keys(" ai")
+    H.wait_child(child, [[vim.api.nvim_buf_get_name(0):find("herdr%-compose://") ~= nil]])
+    eq(child.lua_get("vim.b.herdr_pane_id"), pane)
+end
+
+T["<leader>ai with no terminal open asks which agent"] = function()
+    local pane = server.space("pi-space").root_pane.pane_id
+    child.lua([[
+        require("herdr.state").refresh()
+        vim.ui.select = function(items, _, cb)
+            for _, p in ipairs(items) do
+                if p.pane_id == _G.want then return cb(p) end
+            end
+        end
+    ]])
+    child.lua("_G.want = ...", { pane })
+    H.wait_child(child, ([[require("herdr.state").pane(%q) ~= nil]]):format(pane))
+    child.type_keys(" ai")
+    H.wait_child(child, [[vim.api.nvim_buf_get_name(0):find("herdr%-compose://") ~= nil]])
+    eq(child.lua_get("vim.b.herdr_pane_id"), pane)
 end
 
 T["disconnect detaches everything"] = function()

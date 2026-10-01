@@ -136,72 +136,86 @@ function M.navigate(dir)
     vim.cmd("wincmd " .. n.wincmd)
 end
 
--- History ---------------------------------------------------------------------
+-- Keys ---------------------------------------------------------------------------
 --
 -- `herdr terminal attach` repaints the pane's screen in place, so the terminal
 -- buffer only ever holds one screen. Scrolling up (or searching) opens a local,
 -- cached copy of the pane's history instead (see herdr.history), where
--- everything is native Neovim.
+-- everything is native Neovim. All keys come from `terminal.keys`.
 
 local function wheel_lines()
     return tonumber((vim.o.mousescroll or ""):match("ver:(%d+)")) or 3
 end
 
-local function setup_history_keys(buf)
-    if not config.options.terminal.history then
-        return
-    end
-    local history = require("herdr.history")
-    local function map(modes, lhs, fn, desc)
-        vim.keymap.set(modes, lhs, fn, { buffer = buf, desc = desc })
-    end
-    local function motion(keys)
+--- Actions available to `terminal.keys` (and `compose` to history.keys).
+function M.actions()
+    local history = function(keys)
         return function()
-            history.open(vim.v.count > 0 and (vim.v.count .. keys) or keys)
+            require("herdr.history").open(vim.v.count > 0 and (vim.v.count .. keys) or keys)
         end
     end
-    map({ "n", "t" }, "<ScrollWheelUp>", function()
-        history.open(wheel_lines() .. "<C-y>")
-    end, "Herdr history (scroll up)")
-    map("n", "<C-u>", motion("<C-u>"), "Herdr history (half page up)")
-    map("n", "<C-b>", motion("<C-b>"), "Herdr history (page up)")
-    map("n", "<PageUp>", motion("<C-b>"), "Herdr history (page up)")
-    map("n", "<C-y>", motion("<C-y>"), "Herdr history (line up)")
-    map("n", "k", motion("k"), "Herdr history (up)")
-    map("n", "gg", motion("gg"), "Herdr history (top)")
-    for _, key in ipairs({ "/", "?" }) do
-        map("n", key, function()
-            history.open("")
+    local function search(key)
+        return function()
+            require("herdr.history").open("")
             vim.schedule(function()
                 vim.api.nvim_feedkeys(key, "n", false)
             end)
-        end, "Search herdr history")
-    end
-end
-
-local function setup_compose_key(buf)
-    local key = config.options.terminal.compose
-    if key then
-        vim.keymap.set("n", key, function()
-            require("herdr.compose").open()
-        end, { buffer = buf, desc = "Compose agent input" })
-    end
-end
-M.setup_compose_key = setup_compose_key
-
-local function setup_keys(buf)
-    setup_history_keys(buf)
-    setup_compose_key(buf)
-    for dir, lhs in pairs(config.options.terminal.navigation or {}) do
-        if lhs and NAV[dir] then
-            vim.keymap.set("t", lhs, function()
-                M.navigate(dir)
-            end, { buffer = buf, desc = "Navigate " .. dir })
         end
     end
-    if config.options.terminal.esc ~= "passthrough" then
-        vim.keymap.set("t", "<Esc>", "<C-\\><C-n>", { buffer = buf, desc = "Normal mode" })
+    local function nav(dir)
+        return {
+            mode = "t",
+            desc = "Navigate " .. dir,
+            fn = function()
+                M.navigate(dir)
+            end,
+        }
     end
+    return {
+        normal_mode = {
+            mode = "t",
+            desc = "Normal mode",
+            fn = function()
+                vim.cmd("stopinsert")
+            end,
+        },
+        nav_left = nav("left"),
+        nav_down = nav("down"),
+        nav_up = nav("up"),
+        nav_right = nav("right"),
+        history_wheel = {
+            mode = { "n", "t" },
+            desc = "Herdr history (scroll up)",
+            fn = function()
+                require("herdr.history").open(wheel_lines() .. "<C-y>")
+            end,
+        },
+        history_half_page = { desc = "Herdr history (half page up)", fn = history("<C-u>") },
+        history_page = { desc = "Herdr history (page up)", fn = history("<C-b>") },
+        history_line = { desc = "Herdr history (line up)", fn = history("<C-y>") },
+        history_up = { desc = "Herdr history (up)", fn = history("k") },
+        history_top = { desc = "Herdr history (top)", fn = history("gg") },
+        history_search = { desc = "Search herdr history", fn = search("/") },
+        history_search_back = { desc = "Search herdr history backwards", fn = search("?") },
+        compose = {
+            desc = "Compose agent input",
+            fn = function()
+                require("herdr.compose").open()
+            end,
+        },
+    }
+end
+
+local function setup_keys(buf)
+    local actions = M.actions()
+    if not config.options.history.enabled then
+        for name in pairs(actions) do
+            if name:match("^history_") then
+                actions[name].fn = function() end -- history off: keys do nothing
+            end
+        end
+    end
+    require("herdr.keys").apply(buf, config.options.terminal.keys, actions)
 end
 
 --- Winbar for herdr terminal windows: status, agent, name, space.
@@ -592,6 +606,24 @@ state.on_change(function()
 end)
 
 local term_group = vim.api.nvim_create_augroup("herdr_terminal_ui", { clear = true })
+
+-- The herdr terminal used most recently, per tabpage (a pane, not a window:
+-- windows get reused, e.g. :vsplit then :enew). Used by compose.
+M.last_pane = {} ---@type table<integer, string>
+local function remember_pane()
+    local id = vim.b.herdr_pane_id
+    if id and not vim.b.herdr_compose_from then
+        M.last_pane[vim.api.nvim_get_current_tabpage()] = id
+    end
+end
+vim.api.nvim_create_autocmd({ "BufEnter", "WinEnter" }, { group = term_group, callback = remember_pane })
+vim.api.nvim_create_autocmd("User", {
+    group = term_group,
+    pattern = "HerdrAttach",
+    callback = function()
+        vim.schedule(remember_pane) -- the buffer is tagged only once attached
+    end,
+})
 vim.api.nvim_create_autocmd({ "BufEnter", "WinEnter" }, {
     group = term_group,
     pattern = { "herdr://*", "herdr-history://*" },
