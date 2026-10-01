@@ -60,6 +60,11 @@ local function connect(method, params, on_line, on_close)
         end
         pipe:connect(transport.api_socket, function(cerr)
             if cerr then
+                -- The socket is gone (server restarted, SSH forward dropped):
+                -- the connection is lost; transport reconnects with backoff.
+                vim.schedule(function()
+                    transport.lost("herdr API socket unreachable (" .. cerr .. ")")
+                end)
                 return close("connect to herdr API socket failed: " .. cerr)
             end
             pipe:write(encode(method, params))

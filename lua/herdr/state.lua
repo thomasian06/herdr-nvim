@@ -104,6 +104,14 @@ function ensure_subscription(snapshot)
             return -- replaced or closed on purpose
         end
         sub, sub_key = nil, nil
+        -- The server ended the stream: it stopped, crashed or restarted.
+        -- Treat the connection as lost so it is re-established and attached
+        -- terminals are reattached (requests alone may not notice, e.g. a
+        -- restarted local server reuses the same socket path).
+        local transport = require("herdr.transport")
+        if transport.status == "ready" then
+            return transport.lost("herdr event stream ended" .. (err and (" (" .. err .. ")") or ""))
+        end
         if err then
             M.error = "event stream: " .. err
             emit()
@@ -237,6 +245,31 @@ function M.when_snapshot(fn)
     end)
     M.start()
 end
+
+-- A dropped connection: say so while it reconnects, then refresh.
+local reconnect_group = vim.api.nvim_create_augroup("herdr_state_reconnect", { clear = true })
+vim.api.nvim_create_autocmd("User", {
+    group = reconnect_group,
+    pattern = "HerdrDisconnected",
+    callback = function(ev)
+        local reason = ev.data and ev.data.reason or "connection lost"
+        M.error = reason .. "; reconnecting…"
+        if sub then
+            local old = sub
+            sub, sub_key = nil, nil
+            old.close()
+        end
+        emit()
+    end,
+})
+vim.api.nvim_create_autocmd("User", {
+    group = reconnect_group,
+    pattern = "HerdrReconnected",
+    callback = function()
+        M.error = nil
+        M.refresh()
+    end,
+})
 
 -- Lookup helpers ------------------------------------------------------------
 

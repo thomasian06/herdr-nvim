@@ -3,10 +3,14 @@
 --   - an agent finishes (working/blocked -> idle)  -> "done" sound + notification,
 --     unless you are looking at it (its terminal is the current window and
 --     Neovim has focus), like Herdr skips the active tab.
+-- Like Herdr, a notification waits [ui.toast] delay_seconds (default 1) and is
+-- re-checked before firing (so an agent that flickers back to work stays
+-- quiet); a newer event for the same pane replaces a pending one.
 --
--- Sounds are Herdr's own (bundled), and Herdr's `[ui.sound]` settings in
--- ~/.config/herdr/config.toml (enabled, path, done_path, request_path) and
--- HERDR_DISABLE_SOUND are honored.
+-- Sounds are Herdr's own (bundled). Herdr's settings are honored:
+-- [ui.sound] enabled/path/done_path/request_path, [ui.sound.agents]
+-- (default/on/off per agent; droid is off by default), HERDR_DISABLE_SOUND,
+-- and HERDR_CONFIG_PATH.
 
 local config = require("herdr.config")
 local state = require("herdr.state")
@@ -58,11 +62,42 @@ local PLAYERS = {
     { "mpv", "--no-video", "--really-quiet" },
 }
 
---- Play a notification sound ("done" | "request") in the background.
+-- Herdr's per-agent sound switches ([ui.sound.agents]); droid defaults off.
+local AGENT_DEFAULT_OFF = { droid = true }
+
+--- Whether sounds are on for an agent label ("pi", "claude", "opencode", ...).
+function M.agent_sound_on(agent)
+    if not agent or agent == "" then
+        return true
+    end
+    local overrides = require("herdr.herdr_config").section("ui.sound.agents")
+    local key = agent:lower()
+    local value = overrides[key] or overrides[key:gsub("[^%w]", "_")]
+    if key == "opencode" and value == nil then
+        value = overrides.open_code
+    end
+    if value == "off" or value == false then
+        return false
+    elseif value == "on" or value == true then
+        return true
+    end
+    return not AGENT_DEFAULT_OFF[key]
+end
+
+local last_played = {} ---@type table<string, integer> kind -> uv.now()
+local BURST_MS = 400
+
+--- Play a notification sound ("done" | "request") in the background. Several
+--- agents finishing at once play one sound, not a burst.
 function M.play(kind)
     if not sound_enabled() then
         return
     end
+    local now = vim.uv.now()
+    if last_played[kind] and now - last_played[kind] < BURST_MS then
+        return
+    end
+    last_played[kind] = now
     local file = sound_file(kind)
     local cmd
     if vim.fn.has("mac") == 1 then
@@ -106,7 +141,9 @@ local function announce(kind, p)
     if not o.enabled or not o.on[kind == "request" and "blocked" or "done"] then
         return
     end
-    M.play(kind)
+    if M.agent_sound_on(p.agent) then
+        M.play(kind)
+    end
     if o.message then
         local what, space = describe(p)
         local msg = kind == "request" and (what .. " needs input") or (what .. " is done")
@@ -116,6 +153,54 @@ local function announce(kind, p)
             { title = "herdr" }
         )
     end
+end
+
+local pending = {} ---@type table<string, uv.uv_timer_t> pane_id -> timer
+
+--- Herdr's notification delay ([ui.toast] delay_seconds, 0..3600, default 1).
+function M.delay_ms()
+    local secs = tonumber(require("herdr.herdr_config").section("ui.toast").delay_seconds) or 1
+    return math.floor(math.max(0, math.min(secs, 3600)) * 1000)
+end
+
+--- Still true when it is time to notify? (re-checked after the delay)
+local function still_applies(kind, pane_id)
+    local p = state.pane(pane_id)
+    if not p then
+        return false
+    end
+    if kind == "request" then
+        return p.agent_status == "blocked"
+    end
+    return (p.agent_status == "done" or p.agent_status == "idle") and not is_watched(pane_id)
+end
+
+local function schedule(kind, p)
+    local id = p.pane_id
+    if pending[id] then
+        pending[id]:stop()
+        pending[id]:close()
+        pending[id] = nil
+    end
+    local delay = M.delay_ms()
+    if delay == 0 then
+        return announce(kind, p)
+    end
+    local timer = assert(vim.uv.new_timer())
+    pending[id] = timer
+    timer:start(
+        delay,
+        0,
+        vim.schedule_wrap(function()
+            if pending[id] == timer then
+                pending[id] = nil
+                timer:close()
+            end
+            if still_applies(kind, id) then
+                announce(kind, state.pane(id) or p)
+            end
+        end)
+    )
 end
 
 local function on_snapshot(snapshot)
@@ -130,7 +215,7 @@ local function on_snapshot(snapshot)
         local prev_label, label = previous_agent[p.pane_id], p.agent or false
         if primed and prev and prev ~= now then
             if now == "blocked" then
-                announce("request", p)
+                schedule("request", p)
             elseif
                 (now == "idle" or now == "done")
                 and (
@@ -141,7 +226,7 @@ local function on_snapshot(snapshot)
                 )
                 and not is_watched(p.pane_id)
             then
-                announce("done", p)
+                schedule("done", p)
             end
         end
         previous[p.pane_id] = now

@@ -2,16 +2,18 @@
 --
 -- Local: talk to the session's sockets directly.
 --
--- Remote: exactly one SSH connection (a ControlMaster) per Neovim. The remote
--- session's API socket and client socket are forwarded to local unix sockets,
--- like Herdr's own `--remote` client does with its bridge. Terminals then
--- attach with the local `herdr` binary through the forwarded client socket
--- (HERDR_SOCKET_PATH), so any number of open panes costs no extra SSH sessions,
--- and closing one detaches immediately.
+-- Remote: one SSH connection per Neovim. If your ssh config already has a live
+-- ControlMaster for the host (ControlPath), it is reused, so hosts that need
+-- MFA or a password work once you have authenticated in a terminal; otherwise
+-- herdr-nvim runs its own master. The session's API and client sockets are
+-- forwarded over it to local unix sockets, like Herdr's own `--remote` client.
+-- Terminals then attach with the local `herdr` through the forwarded client
+-- socket (HERDR_SOCKET_PATH): any number of open panes costs no extra SSH
+-- sessions, and closing one detaches immediately. Without a compatible local
+-- `herdr`, terminals run `herdr terminal attach` on the remote instead.
 --
--- If there is no local `herdr`, or its protocol is incompatible with the
--- server, terminals fall back to running `herdr terminal attach` on the remote
--- over the same connection (one SSH session per open pane).
+-- A dropped connection (SSH master gone, server restarted) is reconnected
+-- with backoff; `User HerdrDisconnected` / `User HerdrReconnected` fire.
 
 local config = require("herdr.config")
 
@@ -26,13 +28,20 @@ M.api_socket = nil
 M.attach_mode = nil
 ---@type string? why the fallback attach mode was chosen
 M.attach_reason = nil
----@type table<string, string>? parsed `herdr status server` of the connected server
+---@type table? `herdr status server --json` of the connected server
 M.server = nil
+---@type "own"|"user"|nil whose SSH ControlMaster carries the connection
+M.ssh_mode = nil
+---@type string? herdr binary on the remote host
+M.remote_bin = nil
 
 local waiters = {}
 local run_dir, ctl_path, master
+local forwards = {} ---@type string[] "-L" specs added to the SSH master
 local used_ssh_attach = false
-local generation = 0 -- bumps on shutdown so stale callbacks can bail out
+local server_home ---@type string? cached per connection
+local generation = 0 -- bumps on shutdown/drop so stale callbacks can bail out
+local backoff ---@type number? seconds until the next reconnect attempt
 
 --- Plugin options, with `remote`/`session` taken from the active connection
 --- (`remote = false` means the local server).
@@ -62,26 +71,18 @@ local function system(cmd, cb, sys_opts)
     return nil
 end
 
-local function remote_prefix()
-    local parts = {}
-    for _, p in ipairs(opts().remote_path) do
-        parts[#parts + 1] = p
+local function event(name, data)
+    vim.api.nvim_exec_autocmds("User", { pattern = name, data = data })
+end
+
+--- Parse `herdr status server` output: JSON (0.9.0+), else "key: value" text.
+---@return table { running: boolean, socket: string?, version: string?, compatible: boolean? }
+function M.parse_status(stdout)
+    local ok, data = pcall(vim.json.decode, stdout or "", { luanil = { object = true, array = true } })
+    if ok and type(data) == "table" then
+        data.running = data.running == true or data.status == "running"
+        return data
     end
-    parts[#parts + 1] = "$PATH"
-    return "PATH=" .. table.concat(parts, ":") .. " "
-end
-
-local function remote_herdr(args, exec)
-    return remote_prefix()
-        .. (exec == false and "" or "exec ")
-        .. "herdr --session "
-        .. vim.fn.shellescape(opts().session)
-        .. " "
-        .. args
-end
-
---- Parse `herdr status ...` output ("key: value" lines).
-local function parse_status(stdout)
     local t = {}
     for line in (stdout or ""):gmatch("[^\n]+") do
         local k, v = line:match("^%s*([%w_]+):%s*(.-)%s*$")
@@ -89,12 +90,28 @@ local function parse_status(stdout)
             t[k] = v
         end
     end
-    return t
+    return {
+        running = t.status == "running",
+        socket = t.socket,
+        version = t.version,
+        compatible = t.private_protocol_compatible == "yes",
+    }
 end
+
+local reconnecting = false -- a connection was lost and is not back yet
 
 local function finish(err)
     M.status = err and "failed" or "ready"
     M.error = err
+    if not err and reconnecting then
+        -- Back after a loss, by whichever path (the reconnect loop, or any
+        -- request that needed the connection): tell the rest of the plugin.
+        reconnecting = false
+        backoff = nil
+        vim.schedule(function()
+            event("HerdrReconnected")
+        end)
+    end
     local list = waiters
     waiters = {}
     for _, cb in ipairs(list) do
@@ -128,7 +145,7 @@ local function wait_running(status_fn, deadline_ms, cb)
     local t0 = vim.uv.now()
     local function poll()
         status_fn(function(st)
-            if st.status == "running" then
+            if st.running then
                 return cb(st)
             end
             if vim.uv.now() - t0 > deadline_ms then
@@ -144,10 +161,10 @@ end
 
 local function local_status(cb, env)
     local o = opts()
-    local cmd = env and { o.herdr_bin, "status", "server" }
-        or { o.herdr_bin, "--session", o.session, "status", "server" }
+    local cmd = env and { o.herdr_bin, "status", "server", "--json" }
+        or { o.herdr_bin, "--session", o.session, "status", "server", "--json" }
     system(cmd, function(res)
-        local st = parse_status(res.stdout)
+        local st = M.parse_status(res.stdout)
         st._code = res.code
         st._stderr = res.stderr
         cb(st)
@@ -170,7 +187,7 @@ local function start_local()
         if st._code == 127 then
             return finish("`" .. o.herdr_bin .. "` not found. Install Herdr (https://herdr.dev) or set `herdr_bin`.")
         end
-        if st.status == "running" and st.socket then
+        if st.running and st.socket then
             return connected(st)
         end
         confirm_start("", function(start)
@@ -194,29 +211,101 @@ end
 
 -- Remote -----------------------------------------------------------------------
 
+--- ssh command through the connection's master (ours via -S, or the user's
+--- via their ssh config). `ControlMaster=no` keeps these from ever becoming a
+--- master: killing one must never end the user's other sessions.
 local function ssh(args)
-    local cmd = { "ssh", "-S", ctl_path, "-o", "BatchMode=yes" }
+    local cmd = { "ssh", "-o", "BatchMode=yes", "-o", "ControlMaster=no" }
+    if M.ssh_mode == "own" then
+        vim.list_extend(cmd, { "-S", ctl_path })
+    end
     vim.list_extend(cmd, args)
     return cmd
 end
 
-local function wait_for_master(host, tries, cb)
-    system(ssh({ "-O", "check", host }), function(res)
-        if res.code == 0 then
-            return cb(nil)
+--- Effective ssh settings for a host (`ssh -G`), lowercase keys.
+local function ssh_settings(host, cb)
+    system({ "ssh", "-G", "--", host }, function(res)
+        local settings = {}
+        for line in (res.stdout or ""):gmatch("[^\n]+") do
+            local k, v = line:match("^(%S+)%s+(.*)$")
+            if k then
+                settings[k:lower()] = v
+            end
         end
-        if tries <= 0 or not master or master:is_closing() then
-            return cb("could not establish SSH connection to " .. host .. ": " .. (res.stderr or ""))
-        end
-        vim.defer_fn(function()
-            wait_for_master(host, tries - 1, cb)
-        end, 100)
+        cb(settings)
     end)
 end
 
+--- Options for our own master: only what the user's config leaves unset, so
+--- their choices (host keys, timeouts, proxies) always win.
+function M.master_options(settings)
+    local o = {
+        "ControlPersist=no",
+        "BatchMode=yes",
+        "NumberOfPasswordPrompts=0",
+        "StreamLocalBindUnlink=yes",
+        "ExitOnForwardFailure=yes",
+    }
+    if (settings.serveraliveinterval or "0") == "0" then
+        vim.list_extend(o, { "ServerAliveInterval=15", "ServerAliveCountMax=4" })
+    end
+    local timeout = settings.connecttimeout
+    if timeout == nil or timeout == "0" or timeout == "none" then
+        o[#o + 1] = "ConnectTimeout=15"
+    end
+    local out = {}
+    for _, kv in ipairs(o) do
+        vim.list_extend(out, { "-o", kv })
+    end
+    return out
+end
+
+-- Where Herdr may be installed on the remote: PATH (not mise shims), then
+-- `remote_path`, then known install roots; confirmed with `status client`.
+local KNOWN_PATHS = {
+    "$HOME/.local/bin/herdr",
+    "/opt/homebrew/bin/herdr",
+    "/usr/local/bin/herdr",
+    "/home/linuxbrew/.linuxbrew/bin/herdr",
+    "$HOME/.nix-profile/bin/herdr",
+    "/etc/profiles/per-user/$USER/bin/herdr",
+    "/nix/var/nix/profiles/default/bin/herdr",
+    "/run/current-system/sw/bin/herdr",
+}
+
+function M.find_herdr_script()
+    local candidates = { '"$c"' }
+    for _, dir in ipairs(opts().remote_path or {}) do
+        candidates[#candidates + 1] = '"' .. dir:gsub('"', "") .. '/herdr"'
+    end
+    for _, p in ipairs(KNOWN_PATHS) do
+        candidates[#candidates + 1] = '"' .. p .. '"'
+    end
+    return table.concat({
+        "c=$(command -v herdr 2>/dev/null || :)",
+        'case "$c" in */mise/shims/*) c= ;; /*) ;; *) c= ;; esac',
+        "for p in " .. table.concat(candidates, " ") .. "; do",
+        '  if [ -n "$p" ] && [ -x "$p" ] && "$p" status client --json </dev/null >/dev/null 2>&1; then',
+        '    printf "%s\\n" "$p"; exit 0',
+        "  fi",
+        "done",
+        "exit 127",
+    }, "\n")
+end
+
+local function remote_herdr(args, exec)
+    return (exec == false and "" or "exec ")
+        .. vim.fn.shellescape(M.remote_bin or "herdr")
+        .. " --session "
+        .. vim.fn.shellescape(opts().session)
+        .. " "
+        .. args
+end
+
 local function remote_status(cb)
-    system(ssh({ opts().remote, remote_herdr("status server") }), function(res)
-        local st = parse_status(res.stdout)
+    system(ssh({ opts().remote, remote_herdr("status server --json") }), function(res)
+        local st = M.parse_status(res.stdout)
         st._code = res.code
         st._stderr = res.stderr
         cb(st)
@@ -245,14 +334,11 @@ local function choose_attach(cb)
         return cb("ssh")
     end
     local_status(function(st)
-        if st.private_protocol_compatible == "yes" then
+        if st.compatible == true then
             M.attach_reason = nil
             return cb("forwarded")
         end
-        M.attach_reason = string.format(
-            "local herdr is not protocol-compatible with the server (%s)",
-            st.private_protocol_compatible or ("exit " .. tostring(st._code))
-        )
+        M.attach_reason = "local herdr is not protocol-compatible with the server"
         cb("ssh")
     end, { HERDR_SOCKET_PATH = run_dir .. "/herdr.sock" })
 end
@@ -282,53 +368,31 @@ local function start_remote()
     -- Short path: unix socket paths are limited to ~104 bytes on macOS.
     run_dir = string.format("/tmp/herdr-nvim-%d-%d", vim.uv.os_get_passwd().uid, vim.uv.os_getpid())
     vim.fn.mkdir(run_dir, "p")
-    vim.uv.fs_chmod(run_dir, tonumber("700", 8)) -- private: holds the SSH control socket
-    ctl_path = run_dir .. "/ctl"
-
-    master = system({
-        "ssh",
-        "-M",
-        "-N",
-        "-S",
-        ctl_path,
-        "-o",
-        "ControlPersist=no",
-        "-o",
-        "BatchMode=yes",
-        "-o",
-        "ServerAliveInterval=15",
-        "-o",
-        "StreamLocalBindUnlink=yes",
-        "-o",
-        "ExitOnForwardFailure=yes",
-        host,
-    }, function(res)
-        if gen ~= generation then
-            return
-        end
-        if M.status == "ready" then
-            M.status = "idle" -- connection dropped; next use reconnects
-            M.api_socket = nil
-        elseif M.status == "starting" then
-            finish("ssh to " .. host .. " exited (" .. res.code .. "): " .. (res.stderr or ""))
-        end
-    end)
+    vim.uv.fs_chmod(run_dir, tonumber("700", 8)) -- private: holds the control socket
+    forwards = {}
 
     local function forward(st)
         M.server = st
         local remote_api = st.socket
         local stem = vim.fn.fnamemodify(remote_api, ":t:r")
         local remote_client = vim.fn.fnamemodify(remote_api, ":h") .. "/" .. stem .. "-client.sock"
-        local fwd = { "-O", "forward" }
-        vim.list_extend(fwd, { "-L", run_dir .. "/herdr.sock:" .. remote_api })
-        vim.list_extend(fwd, { "-L", run_dir .. "/herdr-client.sock:" .. remote_client, host })
-        system(ssh(fwd), function(res)
+        local specs = {
+            run_dir .. "/herdr.sock:" .. remote_api,
+            run_dir .. "/herdr-client.sock:" .. remote_client,
+        }
+        local args = { "-O", "forward" }
+        for _, spec in ipairs(specs) do
+            vim.list_extend(args, { "-L", spec })
+        end
+        args[#args + 1] = host
+        system(ssh(args), function(res)
             if gen ~= generation then
                 return
             end
             if res.code ~= 0 then
                 return finish("failed to forward herdr sockets: " .. (res.stderr or ""))
             end
+            forwards = specs
             M.api_socket = run_dir .. "/herdr.sock"
             choose_attach(function(mode)
                 if gen ~= generation then
@@ -340,29 +404,13 @@ local function start_remote()
         end)
     end
 
-    wait_for_master(host, 100, function(err)
-        if gen ~= generation then
-            return
-        end
-        if err then
-            return finish(err)
-        end
+    local function with_server()
         remote_status(function(st)
             if gen ~= generation then
                 return
             end
-            if st.status == "running" and st.socket then
+            if st.running and st.socket then
                 return forward(st)
-            end
-            if st._code == 127 or (st._stderr or ""):find("not found", 1, true) then
-                return finish(
-                    "herdr not found on "
-                        .. host
-                        .. " (searched "
-                        .. table.concat(opts().remote_path, ", ")
-                        .. " and PATH):\n"
-                        .. (st._stderr or "")
-                )
             end
             confirm_start(" on " .. host, function(start)
                 if not start then
@@ -382,6 +430,81 @@ local function start_remote()
                 end)
             end)
         end)
+    end
+
+    local function connected()
+        system(ssh({ host, "sh -c " .. vim.fn.shellescape(M.find_herdr_script()) }), function(res)
+            if gen ~= generation then
+                return
+            end
+            local bin = vim.trim(res.stdout or ""):match("^(/%S+)")
+            if res.code ~= 0 or not bin then
+                return finish(
+                    "herdr not found on "
+                        .. host
+                        .. " (searched PATH, remote_path and the usual install locations)"
+                        .. ((res.stderr or "") ~= "" and (":\n" .. res.stderr) or "")
+                )
+            end
+            M.remote_bin = bin
+            with_server()
+        end)
+    end
+
+    local function start_own_master(settings)
+        M.ssh_mode = "own"
+        ctl_path = run_dir .. "/ctl"
+        local cmd = { "ssh", "-M", "-N", "-S", ctl_path }
+        vim.list_extend(cmd, M.master_options(settings))
+        vim.list_extend(cmd, { "--", host })
+        master = system(cmd, function(res)
+            if gen ~= generation then
+                return
+            end
+            if M.status == "ready" then
+                M.lost("SSH connection to " .. host .. " closed")
+            elseif M.status == "starting" then
+                finish("ssh to " .. host .. " exited (" .. res.code .. "): " .. (res.stderr or ""))
+            end
+        end)
+        local tries = 150
+        local function wait()
+            system(ssh({ "-O", "check", host }), function(res)
+                if gen ~= generation then
+                    return
+                end
+                if res.code == 0 then
+                    return connected()
+                end
+                tries = tries - 1
+                if tries <= 0 or not master or master:is_closing() then
+                    return -- the master's exit handler reports the error
+                end
+                vim.defer_fn(wait, 100)
+            end)
+        end
+        wait()
+    end
+
+    ssh_settings(host, function(settings)
+        if gen ~= generation then
+            return
+        end
+        local cp = settings.controlpath
+        if cp and cp ~= "none" then
+            -- The user's own master (e.g. authenticated with MFA): reuse if live.
+            M.ssh_mode = "user"
+            return system(ssh({ "-O", "check", host }), function(res)
+                if gen ~= generation then
+                    return
+                end
+                if res.code == 0 then
+                    return connected()
+                end
+                start_own_master(settings)
+            end)
+        end
+        start_own_master(settings)
     end)
 end
 
@@ -403,6 +526,75 @@ function M.ensure(cb)
     else
         start_local()
     end
+end
+
+-- Dropped connections ------------------------------------------------------------
+
+local function release_remote()
+    local host = opts().remote
+    if host and M.ssh_mode == "user" then
+        -- Leave the user's master running; remove only our forwards.
+        for _, spec in ipairs(forwards) do
+            vim.system(ssh({ "-O", "cancel", "-L", spec, host })):wait(2000)
+        end
+    elseif host and ctl_path then
+        vim.system(ssh({ "-O", "exit", host })):wait(2000)
+    end
+    if master and not master:is_closing() then
+        master:kill(15)
+    end
+    if run_dir then
+        vim.fn.delete(run_dir, "rf")
+    end
+    run_dir, ctl_path, master = nil, nil, nil
+    forwards = {}
+end
+
+local function reset_state()
+    M.api_socket = nil
+    M.attach_mode = nil
+    M.attach_reason = nil
+    M.server = nil
+    M.ssh_mode = nil
+    M.remote_bin = nil
+    server_home = nil
+    used_ssh_attach = false
+end
+
+local function schedule_reconnect()
+    local connection = require("herdr.connection")
+    local target = connection.active
+    if not target then
+        return
+    end
+    backoff = math.min((backoff or 0.5) * 2, 30)
+    local gen = generation
+    vim.defer_fn(function()
+        if gen ~= generation or connection.active ~= target or M.status == "ready" then
+            return
+        end
+        M.ensure(function(err)
+            if err then
+                return schedule_reconnect()
+            end
+        end)
+    end, backoff * 1000)
+end
+
+--- The connection dropped (SSH master gone, server restarted, socket gone):
+--- forget it and reconnect with backoff (1s doubling to 30s).
+function M.lost(reason)
+    if M.status ~= "ready" then
+        return
+    end
+    generation = generation + 1
+    release_remote()
+    reset_state()
+    M.status = "idle"
+    M.error = reason
+    reconnecting = true
+    event("HerdrDisconnected", { reason = reason })
+    schedule_reconnect()
 end
 
 -- Terminal attach ----------------------------------------------------------
@@ -466,8 +658,6 @@ function M.attach_cmd(terminal_id, takeover)
         nil
 end
 
-local server_home ---@type string? cached per connection
-
 --- Resolve a path on the Herdr server: `~` is the server's home. cb(path?)
 function M.resolve_path(path, cb)
     if not path then
@@ -503,33 +693,21 @@ function M.describe()
     return (o.remote and (o.remote .. ":") or "local:") .. o.session
 end
 
---- Disconnect: stop the SSH master and forget everything about the server.
+--- Disconnect: release the SSH connection and forget everything about the server.
 function M.shutdown()
     generation = generation + 1
+    backoff = nil
+    reconnecting = false
     local o = opts()
-    if ctl_path and o.remote and M.status == "ready" and used_ssh_attach then
+    if run_dir and o.remote and M.status == "ready" and used_ssh_attach then
         local prefix = M.pidfile_prefix()
         local list = "find /tmp -maxdepth 1 -name " .. vim.fn.shellescape(vim.fn.fnamemodify(prefix, ":t") .. "-*.pid")
         vim.system(ssh({ o.remote, M.cleanup_script(list) })):wait(3000)
     end
-    if ctl_path and o.remote then
-        vim.system(ssh({ "-O", "exit", o.remote })):wait(2000)
-    end
-    if master and not master:is_closing() then
-        master:kill(15)
-    end
-    if run_dir then
-        vim.fn.delete(run_dir, "rf")
-    end
-    run_dir, ctl_path, master = nil, nil, nil
-    server_home = nil
-    used_ssh_attach = false
+    release_remote()
+    reset_state()
     M.status = "idle"
     M.error = nil
-    M.api_socket = nil
-    M.attach_mode = nil
-    M.attach_reason = nil
-    M.server = nil
     -- Anyone still waiting on the old connection gets an error.
     finish("disconnected")
     M.status = "idle"

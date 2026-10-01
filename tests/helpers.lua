@@ -107,6 +107,25 @@ function H.start_herdr()
         return msg.result
     end
 
+    --- Restart the same server (same session, state and sockets).
+    function server.restart()
+        vim.system({ bin, "--session", server.session, "server", "stop" }, { env = env }):wait(5000)
+        vim.wait(5000, function()
+            local st = vim.system({ bin, "--session", server.session, "status", "server" }, { env = env, text = true })
+                :wait()
+            return (st.stdout or ""):match("status:%s*running") == nil
+        end, 100)
+        server.proc = vim.system({ bin, "--session", server.session, "server" }, { env = env, text = true })
+        local up = vim.wait(10000, function()
+            local st = vim.system({ bin, "--session", server.session, "status", "server" }, { env = env, text = true })
+                :wait()
+            return (st.stdout or ""):match("status:%s*running") ~= nil
+        end, 100)
+        if not up then
+            error("herdr server did not restart")
+        end
+    end
+
     function server.stop()
         vim.system({ bin, "--session", server.session, "server", "stop" }, { env = env }):wait(5000)
         if server.proc then

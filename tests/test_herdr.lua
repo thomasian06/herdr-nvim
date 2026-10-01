@@ -284,6 +284,38 @@ T["<leader>ai with no terminal open asks which agent"] = function()
     eq(child.lua_get("vim.b.herdr_pane_id"), pane)
 end
 
+T["a restarted server is reconnected and terminals reattach"] = function()
+    local pane = server.space("sigma").root_pane.pane_id
+    child.lua([[require("herdr").open(...)]], { pane })
+    H.wait_child(child, ([[require("herdr.terminal").attached_panes()[%q] ~= nil]]):format(pane))
+    child.lua([[
+        _G.events = {}
+        for _, e in ipairs({ "HerdrDisconnected", "HerdrReconnected" }) do
+            vim.api.nvim_create_autocmd("User", { pattern = e, callback = function() table.insert(_G.events, e) end })
+        end
+    ]])
+    server.restart()
+    server.space("rho") -- something new to see once reconnected
+    child.lua([[require("herdr.state").refresh()]]) -- next request notices the drop
+    H.wait_child(child, [[vim.tbl_contains(_G.events, "HerdrReconnected")]], 20000)
+    eq(child.lua_get("_G.events[1]"), "HerdrDisconnected")
+    H.wait_child(
+        child,
+        [[(function()
+        for _, w in ipairs((require("herdr.state").snapshot or {}).workspaces or {}) do
+            if w.label == "rho" then return true end
+        end
+        return false
+    end)()]],
+        10000
+    )
+    -- Herdr restores panes after a restart; the open terminal is attached again.
+    H.wait_child(child, ([[require("herdr.terminal").attached_panes()[%q] ~= nil]]):format(pane), 10000)
+    vim.wait(500)
+    child.lua([[vim.api.nvim_chan_send(vim.bo.channel, "echo back-$((6*7))\r")]])
+    server.wait_output(pane, "back-42")
+end
+
 T["disconnect detaches everything"] = function()
     local pane = server.space("kappa").root_pane.pane_id
     child.lua([[require("herdr.state").refresh()]])

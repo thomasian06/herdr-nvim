@@ -16,10 +16,13 @@ Herdr's server exposes two sockets per session:
 - `herdr.sock` - the JSON API (one JSON object per line). herdr-nvim uses it for `session.snapshot`, actions like `tab.create` and `pane.rename`, and `events.subscribe` to keep the tree and picker live.
 - `herdr-client.sock` - the client protocol. herdr-nvim does not speak it itself: each terminal is `herdr terminal attach <terminal_id>`, which streams one pane's raw terminal output, and Neovim's built-in terminal renders it.
 
-For a remote server, herdr-nvim opens exactly one SSH connection per Neovim, like Herdr's own `herdr --remote`.
+For a remote server, herdr-nvim uses exactly one SSH connection per Neovim, like Herdr's own `herdr --remote`.
+If your ssh config has a `ControlPath` for the host and that master is running, it is reused (so hosts that need MFA or a password work: authenticate once with `ssh HOST` in a terminal); otherwise herdr-nvim starts its own master, adding only options your config leaves unset (it never overrides host key checking).
 Both sockets are forwarded over it to local unix sockets, and terminals attach with your local `herdr` through the forwarded client socket.
 Any number of open terminals costs no extra SSH sessions, and closing one detaches immediately.
 Without a local `herdr` (or with one that is not protocol-compatible with the server), terminals fall back to running `herdr terminal attach` on the remote, one SSH session per open terminal.
+Herdr is found on the remote in `PATH` (ignoring mise shims), `remote_path`, or the usual install locations (`~/.local/bin`, Homebrew, `/usr/local/bin`, Nix profiles).
+If the connection drops (network, SSH master gone, server restarted), herdr-nvim reconnects with backoff (up to 30 s) and reattaches open terminals; `User HerdrDisconnected` / `User HerdrReconnected` fire.
 
 ## Requirements
 
@@ -32,7 +35,7 @@ On the machine running Neovim:
 
 On the remote machine:
 
-- Herdr 0.9.0+ (CI tests the latest release), on the SSH session's `PATH` or in `~/.local/bin` (see `remote_path`)
+- Herdr 0.9.0+ (CI tests the latest release), on `PATH` or in a usual install location (see `remote_path`)
 - A Herdr server for the session. herdr-nvim offers to start it when it is not running (`auto_start`)
 - SSH unix-socket forwarding allowed (OpenSSH's default `AllowStreamLocalForwarding yes`)
 
@@ -254,7 +257,8 @@ So [Harpoon](https://github.com/ThePrimeagen/harpoon) marks, `:edit herdr://...`
 
 Like Herdr itself, herdr-nvim rings when an agent needs input (becomes blocked) or finishes (goes from working to idle), and shows a notification such as "fix-login (codex) is done".
 It stays quiet for the agent in the window you are looking at while Neovim has focus.
-The sounds are Herdr's own, and Herdr's `[ui.sound]` settings in `~/.config/herdr/config.toml` (`enabled`, `path`, `done_path`, `request_path`) and `HERDR_DISABLE_SOUND` apply.
+As in Herdr, a notification waits `[ui.toast] delay_seconds` (default 1) and is re-checked first, so an agent that flickers back to work stays quiet; several agents finishing at once play one sound.
+The sounds are Herdr's own, and Herdr's settings apply: `[ui.sound]` (`enabled`, `path`, `done_path`, `request_path`), per-agent `[ui.sound.agents]` (`default` / `on` / `off`; Droid is off by default), `HERDR_DISABLE_SOUND`, and `HERDR_CONFIG_PATH`.
 Notifications work whenever you are connected, even with the tree closed.
 
 ## bufferline.nvim
@@ -290,7 +294,7 @@ To keep buffer tabs to the right of the tree (like with neo-tree or snacks' expl
 - `<C-h/j/k/l>` move between windows straight from terminal mode, and entering a herdr terminal window puts you back into terminal mode, so you can hop between agents and type without leaving terminal mode.
   With [vim-tmux-navigator](https://github.com/christoomey/vim-tmux-navigator) or [smart-splits.nvim](https://github.com/mrjones2014/smart-splits.nvim) installed, the edges continue into tmux (or WezTerm/Kitty) panes.
   Agents no longer receive those keys; disable or remap them in `terminal.keys` if one needs them.
-- Scrolling up (`<C-u>`, `<C-b>`, `<PageUp>`, `<C-y>`, `k`, `gg`, mouse wheel) or searching (`/`, `?`) opens the terminal's history in a local, read-only buffer with its colors, where scrolling, search and yank are plain Neovim with no network round trips. `i`/`a` return to the live terminal and type; `q`/`<Esc>` return to it.
+- Scrolling up (`<C-u>`, `<C-b>`, `<PageUp>`, `<C-y>`, `k`, `gg`, mouse wheel) or searching (`/`, `?`) opens the terminal's history (the wheel goes to full-screen apps such as `htop` or `vim` instead, which scroll themselves) in a local, read-only buffer with its colors, where scrolling, search and yank are plain Neovim with no network round trips. `i`/`a` return to the live terminal and type; `q`/`<Esc>` return to it.
   A terminal buffer itself only holds the current screen (Herdr repaints it in place), so herdr-nvim keeps a history cache per terminal: the first open loads the latest 1000 lines (the most Herdr returns per read), and while a terminal is attached the cache syncs in the background, so it keeps everything since you opened it. If more output arrives between syncs than Herdr returns, the cache marks the gap.
 - Each terminal window's winbar shows its status, agent, name and space, so a grid of agents stays readable.
 

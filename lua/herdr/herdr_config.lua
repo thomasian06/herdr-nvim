@@ -4,11 +4,17 @@
 
 local M = {}
 
-local function path()
+--- Herdr's config file: $HERDR_CONFIG_PATH, else $XDG_CONFIG_HOME/herdr, else
+--- ~/.config/herdr (the same order Herdr uses).
+function M.path()
+    if vim.env.HERDR_CONFIG_PATH and vim.env.HERDR_CONFIG_PATH ~= "" then
+        return vim.env.HERDR_CONFIG_PATH
+    end
     local dir = (vim.env.XDG_CONFIG_HOME and vim.env.XDG_CONFIG_HOME ~= "") and vim.env.XDG_CONFIG_HOME
         or (vim.env.HOME .. "/.config")
     return dir .. "/herdr/config.toml"
 end
+local path = M.path
 
 --- Key/value pairs of one [section] (strings unquoted, booleans converted).
 --- Relative file paths are resolved against the config directory when

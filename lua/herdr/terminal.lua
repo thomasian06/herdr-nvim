@@ -187,6 +187,14 @@ function M.actions()
             mode = { "n", "t" },
             desc = "Herdr history (scroll up)",
             fn = function()
+                -- A full-screen app (alternate screen: vim, htop, ...) has no
+                -- scrollback to show; let it handle the wheel itself.
+                local pane = state.pane(vim.b.herdr_pane_id or "")
+                local scroll = pane and pane.scroll
+                if scroll and (scroll.max_offset_from_bottom or 0) == 0 then
+                    local key = vim.api.nvim_replace_termcodes("<ScrollWheelUp>", true, false, true)
+                    return vim.api.nvim_feedkeys(key, "n", false)
+                end
                 require("herdr.history").open(wheel_lines() .. "<C-y>")
             end,
         },
@@ -530,6 +538,42 @@ function M.read_cmd(buf, name)
         end)
     end)
 end
+
+--- After a dropped connection comes back: replace terminal buffers whose
+--- attach died with it by fresh attaches, in the same windows.
+function M.reattach_dead()
+    for terminal_id, buf in pairs(M.buffers) do
+        local pane = vim.api.nvim_buf_is_valid(buf) and state.pane(vim.b[buf].herdr_pane_id or "")
+        if pane and not is_live(buf) then
+            local fresh = vim.api.nvim_create_buf(true, false)
+            local wins = vim.fn.win_findbuf(buf)
+            for _, win in ipairs(wins) do
+                vim.api.nvim_win_set_buf(win, fresh)
+            end
+            M.buffers[terminal_id] = nil
+            pcall(vim.api.nvim_buf_delete, buf, { force = true })
+            start(fresh, pane)
+            for _, win in ipairs(wins) do
+                M.decorate(win)
+            end
+        end
+    end
+end
+
+vim.api.nvim_create_autocmd("User", {
+    group = vim.api.nvim_create_augroup("herdr_terminal_reattach", { clear = true }),
+    pattern = "HerdrReconnected",
+    callback = function()
+        -- Wait for the fresh snapshot (panes may have changed while away).
+        local off
+        off = state.on_change(function(snap)
+            if snap then
+                off()
+                vim.schedule(M.reattach_dead)
+            end
+        end)
+    end,
+})
 
 --- Remove a buffer without closing the windows showing it.
 function M.remove_buffer(buf)

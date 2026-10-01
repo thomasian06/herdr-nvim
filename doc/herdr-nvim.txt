@@ -189,9 +189,10 @@ directories.
 
                                                               *herdr-notify*
 When an agent needs input or finishes, herdr-nvim plays Herdr's sound and
-shows a notification (not for the agent in the focused window). Herdr's
-`[ui.sound]` settings and `HERDR_DISABLE_SOUND` apply. Configure with the
-`notify` option.
+shows a notification (not for the agent in the focused window), after Herdr's
+`[ui.toast] delay_seconds` and a re-check. Herdr's `[ui.sound]` and
+`[ui.sound.agents]` settings, `HERDR_DISABLE_SOUND` and `HERDR_CONFIG_PATH`
+apply. Configure with the `notify` option.
 
 =====
 7. REQUIREMENTS                                          *herdr-requirements*
@@ -203,7 +204,12 @@ optionally snacks.nvim and a Nerd Font.
 Remote: Herdr on PATH or in `remote_path`, a server for the session (the
 plugin can start it), and SSH unix-socket forwarding allowed.
 
-Remote servers use one SSH connection. Both sockets are forwarded and
+Remote servers use one SSH connection: your own ControlMaster when your ssh
+config has a ControlPath for the host and it is running (MFA/password hosts:
+authenticate once with `ssh HOST`), else herdr-nvim's own, which only adds
+options your config leaves unset. Herdr is found in PATH, `remote_path`, or
+the usual install locations. Dropped connections reconnect with backoff and
+reattach open terminals (`User HerdrDisconnected` / `HerdrReconnected`). Both sockets are forwarded and
 terminals attach with the local herdr through the forwarded client socket.
 Without a compatible local herdr, terminals run `herdr terminal attach` on the
 remote instead: one SSH session per open terminal (OpenSSH allows 10 by
