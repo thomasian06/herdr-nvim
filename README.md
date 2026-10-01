@@ -37,14 +37,14 @@ If the connection drops (network, SSH master gone, server restarted), herdr-nvim
 
 On the machine running Neovim:
 
-- Neovim 0.10+ (tested with 0.10, 0.11, 0.12 and nightly)
+- Neovim 0.12+ (CI tests the latest release)
 - For a remote server: OpenSSH, with non-interactive access to the host (`ssh -o BatchMode=yes <host> true` must succeed: keys, an agent, or a `ProxyCommand`)
 - Recommended: [Herdr](https://herdr.dev) installed locally. Required for a local server; for a remote server it enables the single-connection attach described above
 - Optional: [snacks.nvim](https://github.com/folke/snacks.nvim) (picker with live preview, explorer styling) and a [Nerd Font](https://www.nerdfonts.com)
 
 On the remote machine:
 
-- Herdr 0.9.0+ (CI tests the latest release), on `PATH` or in a usual install location (see `remote_path`)
+- Herdr 0.9.3+ (CI tests the latest release), on `PATH` or in a usual install location (see `remote_path`)
 - A Herdr server for the session. herdr-nvim offers to start it when it is not running (`auto_start`)
 - SSH unix-socket forwarding allowed (OpenSSH's default `AllowStreamLocalForwarding yes`)
 
@@ -324,7 +324,6 @@ To keep buffer tabs to the right of the tree (like with neo-tree or snacks' expl
 ```sh
 make check        # StyLua + selene + lua-language-server + tests (what CI runs)
 make test         # unit, UI and integration tests
-make test-matrix  # the latest Neovim 0.10, 0.11 and 0.12 against the locked Herdr
 make fmt          # format
 pre-commit install  # run formatting, lint and type checks on every commit
 ```

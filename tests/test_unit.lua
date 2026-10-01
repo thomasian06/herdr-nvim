@@ -220,13 +220,12 @@ T["simultaneous finishes play one sound"] = function()
     eq(plays, 1)
 end
 
-T["status parsing: JSON, with a text fallback"] = function()
+T["status parsing"] = function()
     local t = require("herdr.transport")
     local st = t.parse_status('{"status":"running","running":true,"socket":"/x/herdr.sock","compatible":true}')
     eq({ st.running, st.socket, st.compatible }, { true, "/x/herdr.sock", true })
-    st = t.parse_status("status: running\nsocket: /y/herdr.sock\nprivate_protocol_compatible: yes\n")
-    eq({ st.running, st.socket, st.compatible }, { true, "/y/herdr.sock", true })
-    eq(t.parse_status('{"status":"not_running","running":false}').running, false)
+    eq(t.parse_status('{"status":"not_running","running":false,"compatible":null}').running, false)
+    eq(t.parse_status("not json").running, false)
 end
 
 T["our ssh master only adds options the user's config leaves unset"] = function()

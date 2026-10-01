@@ -1,4 +1,5 @@
--- Test dependencies: pinned plugins and a sweep of Neovim / Herdr versions.
+-- Test dependencies: pinned plugins and the Neovim / Herdr releases to test
+-- against (the latest of each).
 --
 --   tests/versions.json   what to test against (edited by hand)
 --   tests/deps.lock.json  exact plugin commits and release checksums (generated)
@@ -6,9 +7,8 @@
 -- Usage (via the Makefile):
 --   nvim -l tests/deps.lua update                 regenerate the lock file
 --   nvim -l tests/deps.lua install                install pinned plugins
---   nvim -l tests/deps.lua install-nvim <ver>     download a locked Neovim, print its binary
---   nvim -l tests/deps.lua install-herdr <ver>    download a locked Herdr, print its binary
---   nvim -l tests/deps.lua list <neovim|herdr>    print the versions in the lock
+--   nvim -l tests/deps.lua install-nvim           download the locked Neovim, print its binary
+--   nvim -l tests/deps.lua install-herdr          download the locked Herdr, print its binary
 --
 -- Everything is downloaded into .tests/ and verified against the lock.
 
@@ -81,7 +81,7 @@ local function platform()
     return os_name .. "-" .. arch
 end
 
--- Neovim release assets per platform (names are the same from v0.10.4 on).
+-- Neovim release assets per platform.
 local NVIM_ASSET = {
     ["macos-aarch64"] = "nvim-macos-arm64.tar.gz",
     ["macos-x86_64"] = "nvim-macos-x86_64.tar.gz",
@@ -98,7 +98,7 @@ end
 
 local function update()
     local want = read_json(versions_path) or die("missing " .. versions_path)
-    local lock = { plugins = {}, neovim = {}, herdr = {} }
+    local lock = { plugins = {}, neovim = { version = want.neovim }, herdr = { version = want.herdr } }
 
     for name, url in pairs(want.plugins) do
         local out = run({ "git", "ls-remote", url, "HEAD" })
@@ -108,38 +108,34 @@ local function update()
     end
 
     local manifest = vim.json.decode(run({ "curl", "-fsSL", "https://herdr.dev/latest.json" }))
-    for _, v in ipairs(want.herdr) do
-        local rel = manifest.releases[v] or die("herdr " .. v .. " not in herdr.dev/latest.json")
-        lock.herdr[v] = {}
-        for _, p in ipairs(want.platforms) do
-            local url, sha = rel.assets[p], rel.sha256 and rel.sha256[p]
-            if not (url and sha) then
-                die("herdr " .. v .. " has no " .. p .. " asset")
-            end
-            lock.herdr[v][p] = { url = url, sha256 = sha }
+    local hv = want.herdr
+    local rel = manifest.releases[hv] or die("herdr " .. hv .. " not in herdr.dev/latest.json")
+    for _, p in ipairs(want.platforms) do
+        local url, sha = rel.assets[p], rel.sha256 and rel.sha256[p]
+        if not (url and sha) then
+            die("herdr " .. hv .. " has no " .. p .. " asset")
         end
-        io.write(("herdr  %-12s %d platforms\n"):format(v, #want.platforms))
+        lock.herdr[p] = { url = url, sha256 = sha }
     end
+    io.write(("herdr  %-12s %d platforms\n"):format(hv, #want.platforms))
 
     -- Neovim publishes no checksums for these assets: record them on first fetch.
     local old = read_json(lock_path) or {}
-    for _, v in ipairs(want.neovim) do
-        lock.neovim[v] = {}
-        for _, p in ipairs(want.platforms) do
-            local asset = NVIM_ASSET[p] or die("unknown platform " .. p)
-            local url = ("https://github.com/neovim/neovim/releases/download/%s/%s"):format(v, asset)
-            local known = old.neovim and old.neovim[v] and old.neovim[v][p]
-            local sha = known and known.url == url and known.sha256
-            if not sha then
-                local tmp = vim.fn.tempname()
-                download(url, tmp)
-                sha = sha256_file(tmp)
-                os.remove(tmp)
-            end
-            lock.neovim[v][p] = { url = url, sha256 = sha }
+    local nv = want.neovim
+    for _, p in ipairs(want.platforms) do
+        local asset = NVIM_ASSET[p] or die("unknown platform " .. p)
+        local url = ("https://github.com/neovim/neovim/releases/download/%s/%s"):format(nv, asset)
+        local known = old.neovim and old.neovim[p]
+        local sha = type(known) == "table" and known.url == url and known.sha256
+        if not sha then
+            local tmp = vim.fn.tempname()
+            download(url, tmp)
+            sha = sha256_file(tmp)
+            os.remove(tmp)
         end
-        io.write(("neovim %-12s %d platforms\n"):format(v, #want.platforms))
+        lock.neovim[p] = { url = url, sha256 = sha }
     end
+    io.write(("neovim %-12s %d platforms\n"):format(nv, #want.platforms))
 
     local f = assert(io.open(lock_path, "w"))
     f:write(encode(lock) .. "\n")
@@ -173,9 +169,15 @@ local function verified(path, sha)
     return vim.uv.fs_stat(path) and sha256_file(path) == sha
 end
 
-local function install_nvim(v)
-    local entry = (lock_or_die().neovim[v] or die("neovim " .. v .. " not in lock"))[platform()]
-        or die("neovim " .. v .. " not locked for " .. platform())
+--- The locked release of `kind` ("neovim" or "herdr") for this platform.
+local function locked(kind)
+    local l = lock_or_die()[kind] or die("no " .. kind .. " in the lock; run `make deps-update`")
+    local entry = l[platform()] or die(kind .. " " .. tostring(l.version) .. " not locked for " .. platform())
+    return l.version, entry
+end
+
+local function install_nvim()
+    local v, entry = locked("neovim")
     local base = dir .. "/nvim/" .. v
     local tarball = base .. "/" .. vim.fn.fnamemodify(entry.url, ":t")
     local bin_glob = base .. "/*/bin/nvim"
@@ -196,9 +198,8 @@ local function install_nvim(v)
     io.write(vim.fn.glob(bin_glob) .. "\n")
 end
 
-local function install_herdr(v)
-    local entry = (lock_or_die().herdr[v] or die("herdr " .. v .. " not in lock"))[platform()]
-        or die("herdr " .. v .. " not locked for " .. platform())
+local function install_herdr()
+    local v, entry = locked("herdr")
     local bin = dir .. "/herdr/" .. v .. "/herdr"
     if not verified(bin, entry.sha256) then
         download(entry.url, bin)
@@ -213,25 +214,15 @@ local function install_herdr(v)
     io.write(bin .. "\n")
 end
 
-local function list(kind)
-    local versions = vim.tbl_keys(lock_or_die()[kind] or die("unknown kind " .. tostring(kind)))
-    table.sort(versions, function(a, b)
-        return vim.version.lt(vim.version.parse(a), vim.version.parse(b))
-    end)
-    io.write(table.concat(versions, " ") .. "\n")
-end
-
 local cmd = arg[1]
 if cmd == "update" then
     update()
 elseif cmd == "install" then
     install_plugins()
 elseif cmd == "install-nvim" then
-    install_nvim(arg[2] or die("usage: install-nvim <version>"))
+    install_nvim()
 elseif cmd == "install-herdr" then
-    install_herdr(arg[2] or die("usage: install-herdr <version>"))
-elseif cmd == "list" then
-    list(arg[2])
+    install_herdr()
 else
-    die("usage: nvim -l tests/deps.lua <update|install|install-nvim|install-herdr|list>")
+    die("usage: nvim -l tests/deps.lua <update|install|install-nvim|install-herdr>")
 end
