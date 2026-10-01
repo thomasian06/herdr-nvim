@@ -23,6 +23,9 @@ terminal opens as a Neovim |:terminal| via `herdr terminal attach`.
 Herdr keeps running the agents; Neovim is just another client. The server can
 be local or on a remote machine reached over SSH.
 
+herdr-nvim is an independent project, not affiliated with, endorsed by, or
+supported by Herdr, herdr.dev, or the Neovim project.
+
 ==============================================================================
 2. SETUP                                                        *herdr-setup*
 
