@@ -25,14 +25,14 @@ Without a local `herdr` (or with one that is not protocol-compatible with the se
 
 On the machine running Neovim:
 
-- Neovim 0.10+
+- Neovim 0.10+ (tested with 0.10, 0.11, 0.12 and nightly)
 - For a remote server: OpenSSH, with non-interactive access to the host (`ssh -o BatchMode=yes <host> true` must succeed: keys, an agent, or a `ProxyCommand`)
 - Recommended: [Herdr](https://herdr.dev) installed locally. Required for a local server; for a remote server it enables the single-connection attach described above
 - Optional: [snacks.nvim](https://github.com/folke/snacks.nvim) (picker with live preview, explorer styling) and a [Nerd Font](https://www.nerdfonts.com)
 
 On the remote machine:
 
-- Herdr, on the SSH session's `PATH` or in `~/.local/bin` (see `remote_path`)
+- Herdr 0.9.0+ (tested with 0.9.0 to 0.9.3), on the SSH session's `PATH` or in `~/.local/bin` (see `remote_path`)
 - A Herdr server for the session. herdr-nvim offers to start it when it is not running (`auto_start`)
 - SSH unix-socket forwarding allowed (OpenSSH's default `AllowStreamLocalForwarding yes`)
 
@@ -62,6 +62,8 @@ require("herdr").setup({
   session = "main", -- session for `remote`
   profiles = {}, -- e.g. { { name = "devbox", remote = "devbox", session = "main", projects_dir = "~/projects" } }
   projects_dir = nil, -- where new spaces start on the server ("~" = server home); profiles can override
+  status_style = "herdr", -- follow Herdr's [ui] status_indicators, or "dots" / "symbols"
+  mark_seen = "local", -- viewing a finished agent marks it seen: "local", or "herdr" to also tell Herdr
   auto_start = "ask", -- start a missing Herdr server: "ask" | true | false
   remote_attach = "auto", -- "auto" (local herdr via forwarded socket when possible) | "ssh"
   herdr_bin = "herdr", -- local herdr binary
@@ -175,7 +177,10 @@ Herdr tabs are flattened: a tab with a single pane shows as that terminal, and o
 | `q` | Close tree |
 | `?` | Help |
 
-Status: `●` working, `!` blocked, `✓` done, `○` idle. `↗` marks terminals attached in this Neovim.
+Statuses look like Herdr's: yellow `●` working, red `●` blocked, teal `●` done (finished, not seen yet), green `○` idle (finished and seen), gray `·` no agent.
+Spaces and split groups show their most important status (blocked > done > working > idle).
+Herdr only marks an agent seen when you focus it in Herdr itself, so herdr-nvim also counts viewing its terminal in Neovim (`mark_seen = "local"`); `mark_seen = "herdr"` tells Herdr too (this moves Herdr's focus).
+The glyphs follow Herdr's `[ui] status_indicators` (`dots` or `symbols`). `↗` marks terminals attached in this Neovim.
 Terminal buffers of panes closed in Herdr are removed automatically.
 
 ## Picker
@@ -190,6 +195,12 @@ Stays live while open.
 | `<Tab>` then `<CR>` | Mark several spaces/terminals and open them all, tiled in a new tab |
 | `<C-v>` / `<C-s>` / `<C-t>` | Open in vsplit / split / tab |
 | `<A-f>` | Focus in Herdr's own UI |
+
+## herdr:// buffers (Harpoon, sessions, :edit)
+
+Terminal buffers are named `herdr://<host or local>:<session>/<pane>/<label>`.
+Opening such a buffer attaches that pane, connecting to its server first if needed (and asking before switching away from another connection).
+So [Harpoon](https://github.com/ThePrimeagen/harpoon) marks, `:edit herdr://...`, sessions and buffer pickers work with agent terminals, including after a restart.
 
 ## Notifications
 
@@ -249,11 +260,24 @@ To keep buffer tabs to the right of the tree (like with neo-tree or snacks' expl
 ## Development
 
 ```sh
-# Read-only smoke test against a live server
-HERDR_REMOTE=devbox nvim --headless -u NONE -l tests/smoke_api.lua
-
-# Try the plugin in isolation
-HERDR_REMOTE=devbox nvim -u tests/minimal_init.lua
+make check        # StyLua + selene + lua-language-server + tests (what CI runs)
+make test         # unit, UI and integration tests
+make test-matrix  # every locked Neovim x Herdr version
+make fmt          # format
+pre-commit install  # run formatting, lint and type checks on every commit
 ```
 
-Format with `stylua lua plugin tests`.
+Tools: [StyLua](https://github.com/JohnnyMorganz/StyLua), [selene](https://github.com/Kampfkarren/selene), [lua-language-server](https://github.com/LuaLS/lua-language-server), and [pre-commit](https://pre-commit.com) for the hooks (on macOS: `brew install stylua selene lua-language-server pre-commit`).
+
+Tests use [mini.test](https://github.com/nvim-mini/mini.test).
+UI tests run in a child Neovim; integration tests start a real, isolated Herdr server (its own config and state directories, never your sessions) using `HERDR_BIN` or `herdr` on `PATH`, and are skipped without one.
+
+Test dependencies are pinned:
+
+- `tests/versions.json` lists the Neovim and Herdr versions to test against and the plugins the tests use (edit this).
+- `tests/deps.lock.json` pins plugin commits and the release URLs and SHA-256 checksums of every Neovim and Herdr version (generated by `make deps-update`).
+
+Everything is downloaded into `.tests/` and verified against the lock.
+CI runs the full sweep on Linux and macOS, plus Neovim nightly as a non-blocking early warning.
+
+To try the plugin in isolation: `nvim -u tests/minimal_init.lua` (set `HERDR_REMOTE` for a remote server).
