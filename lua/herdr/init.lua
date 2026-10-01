@@ -70,6 +70,9 @@ end
 --- Connect to a profile name, "host[:session]", or a connection table.
 function M.connect(target)
     local connection = require("herdr.connection")
+    if target == nil or target == "" then
+        return connection.pick() -- like `:Herdr connect` with no argument
+    end
     if type(target) == "table" then
         return connection.switch(target)
     end
