@@ -12,12 +12,12 @@ jobs:
       SELENE_VERSION: 0.31.0
       LUALS_VERSION: 3.19.1
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: rhysd/action-setup-vim@v1
         with:
           neovim: true
           version: stable
-      - uses: JohnnyMorganz/stylua-action@v4
+      - uses: JohnnyMorganz/stylua-action@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           version: v2.5.2
@@ -39,7 +39,7 @@ jobs:
       neovim: ${{ steps.versions.outputs.neovim }}
       herdr: ${{ steps.versions.outputs.herdr }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: versions
         run: |
           echo "neovim=$(jq -c .neovim tests/versions.json)" >> "$GITHUB_OUTPUT"
@@ -56,13 +56,13 @@ jobs:
         neovim: ${{ fromJSON(needs.matrix.outputs.neovim) }}
         herdr: ${{ fromJSON(needs.matrix.outputs.herdr) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # Any Neovim, only to run tests/deps.lua; the tested one comes from the lock.
       - uses: rhysd/action-setup-vim@v1
         with:
           neovim: true
           version: stable
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: .tests
           key: tests-${{ runner.os }}-${{ hashFiles('tests/deps.lock.json') }}
@@ -78,7 +78,7 @@ jobs:
     runs-on: ubuntu-latest
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: rhysd/action-setup-vim@v1
         with:
           neovim: true

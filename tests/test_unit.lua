@@ -156,7 +156,11 @@ end
 T["simultaneous finishes play one sound"] = function()
     local notify = require("herdr.notify")
     local plays = 0
-    local real_system = vim.system
+    local real_system, real_player = vim.system, notify.player_cmd
+    -- Independent of which audio player the machine has (CI Linux has none).
+    notify.player_cmd = function()
+        return { "true" }
+    end
     vim.system = function()
         plays = plays + 1
         return { wait = function() end }
@@ -169,7 +173,7 @@ T["simultaneous finishes play one sound"] = function()
         end
         vim.env.HERDR_DISABLE_SOUND = old
     end)
-    vim.system = real_system
+    vim.system, notify.player_cmd = real_system, real_player
     eq(plays, 1)
 end
 

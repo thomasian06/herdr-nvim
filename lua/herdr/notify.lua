@@ -87,6 +87,19 @@ end
 local last_played = {} ---@type table<string, integer> kind -> uv.now()
 local BURST_MS = 400
 
+--- Command that plays an MP3 file, or nil when no player is installed:
+--- afplay on macOS, else the first of paplay/pw-play/ffplay/mpg123/mpv.
+function M.player_cmd(file)
+    if vim.fn.has("mac") == 1 then
+        return { "afplay", file }
+    end
+    for _, p in ipairs(PLAYERS) do
+        if vim.fn.executable(p[1]) == 1 then
+            return vim.list_extend(vim.deepcopy(p), { file })
+        end
+    end
+end
+
 --- Play a notification sound ("done" | "request") in the background. Several
 --- agents finishing at once play one sound, not a burst.
 function M.play(kind)
@@ -98,18 +111,7 @@ function M.play(kind)
         return
     end
     last_played[kind] = now
-    local file = sound_file(kind)
-    local cmd
-    if vim.fn.has("mac") == 1 then
-        cmd = { "afplay", file }
-    else
-        for _, p in ipairs(PLAYERS) do
-            if vim.fn.executable(p[1]) == 1 then
-                cmd = vim.list_extend(vim.deepcopy(p), { file })
-                break
-            end
-        end
-    end
+    local cmd = M.player_cmd(sound_file(kind))
     if cmd then
         pcall(vim.system, cmd, { detach = true })
     end

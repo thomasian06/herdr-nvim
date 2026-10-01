@@ -119,6 +119,9 @@ function ensure_subscription(snapshot)
         schedule_retry()
     end)
     sub = this
+    -- Changes between the snapshot and this subscription starting (e.g. a new
+    -- pane's agent finishing right away) would otherwise go unseen.
+    M.refresh()
 end
 
 local function fetch()
