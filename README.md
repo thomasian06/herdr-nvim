@@ -116,7 +116,7 @@ require("herdr").setup({
 
 ## Connections
 
-Nothing connects on its own: open the tree and press `C`, or use `:Herdr connect` (`<leader>ac`).
+Nothing connects on its own (except a [project config](#project-config)): open the tree and press `C`, or use `:Herdr connect` (`<leader>ac`).
 The picker offers:
 
 - the current and last-used connection, and local Herdr
@@ -128,22 +128,19 @@ The picker offers:
 Saved profiles live in `stdpath("data")/herdr-nvim/connections.json`.
 Switching detaches and closes the previous server's terminals.
 
-### Project file
+### Project config
 
-To connect automatically in a project, put a `.herdr-nvim.json` in it (or any parent directory):
+To connect automatically in a project, use Neovim's own project-local config ([`'exrc'`](https://neovim.io/doc/user/options.html#'exrc')): turn it on in your config with `vim.o.exrc = true`, then add a `.nvim.lua` to the project:
 
-```json
-{ "remote": "devbox", "session": "main" }
+```lua
+vim.g.herdr_connection = "devbox" -- a profile name, or "host[:session]"
+-- or: vim.g.herdr_connection = { remote = "devbox", session = "main", projects_dir = "~/projects" }
 ```
 
-or refer to a profile: `{ "profile": "devbox" }`.
-Add `"projects_dir": "~/projects"` to either to set where new spaces start.
-
-herdr-nvim connects when Neovim starts in that directory, or when you `:cd` into it while disconnected.
-It never switches away from an active connection; it tells you instead.
-The first time (and after the file changes) it asks: **Trust and connect**, **Not now**, or **Never**.
-The choice is kept in Neovim's trust database, the same one `'exrc'` and `vim.secure` use.
-SSH targets that could be read as `ssh` options (starting with `-`) are rejected.
+Neovim asks you to trust the file the first time (and after it changes); manage that with `:trust`.
+herdr-nvim then connects at startup, unless something is already connected.
+Neovim 0.12+ also finds `.nvim.lua` in parent directories; 0.10 and 0.11 only look in the directory Neovim starts in.
+`require("herdr").connect(...)` works from a `.nvim.lua` too.
 
 ## Tree
 

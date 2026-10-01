@@ -2,13 +2,11 @@
 --
 -- A connection is { name?, remote?, session }. `remote = nil` means the local
 -- Herdr server. At most one connection is active; nothing connects until you
--- ask (`:Herdr connect`), except a project file:
+-- ask (`:Herdr connect`), except a project's `vim.g.herdr_connection`, set in a
+-- trusted Neovim project config (`.nvim.lua` with 'exrc' on), e.g.
 --
---   .herdr-nvim.json in the working directory or a parent, e.g.
---     { "remote": "devbox", "session": "main" }   or   { "profile": "devbox" }
---   connects when Neovim starts there, or when you :cd into it while
---   disconnected. It is read through vim.secure.read(), so Neovim asks you to
---   trust each file once (like 'exrc').
+--   vim.g.herdr_connection = "devbox"            -- profile name or "host:session"
+--   vim.g.herdr_connection = { remote = "devbox", session = "main" }
 --
 -- Known connections, offered by `:Herdr connect`:
 --   - local Herdr (when `herdr` is installed)
@@ -20,8 +18,6 @@
 local config = require("herdr.config")
 
 local M = {}
-
-M.PROJECT_FILE = ".herdr-nvim.json"
 
 ---@type table? the active connection, nil when disconnected
 M.active = nil
@@ -277,160 +273,19 @@ function M.resolve(arg, cb)
     end)
 end
 
--- Project file ---------------------------------------------------------------
+-- Project config -------------------------------------------------------------
 
---- Find the nearest project file at or above `dir`.
-function M.find_project(dir)
-    return vim.fs.find(M.PROJECT_FILE, { upward = true, path = dir or vim.fn.getcwd(), type = "file" })[1]
-end
-
---- Parse project file contents into a connection ({ profile = ... } or a
---- connection). Returns nil and a reason when invalid.
-local function parse_project(content)
-    local ok, data = pcall(vim.json.decode, content or "", { luanil = { object = true, array = true } })
-    if not ok or type(data) ~= "table" then
-        return nil, "invalid JSON"
-    end
-    if data.profile then
-        return { profile = tostring(data.profile), projects_dir = data.projects_dir }
-    end
-    local c = normalize({
-        name = data.name,
-        remote = data.remote,
-        session = data.session,
-        projects_dir = data.projects_dir,
-    })
-    local err = M.validate(c)
-    if err then
-        return nil, err
-    end
-    return c
-end
-
---- Trust status of a file in Neovim's trust database (the one 'exrc' and
---- vim.secure use): "allowed" (and unchanged since), "denied", or "unknown".
-function M.trust_status(path)
-    local full = vim.uv.fs_realpath(path) or vim.fn.fnamemodify(path, ":p")
-    local f = io.open(full, "rb")
-    if not f then
-        return "unknown"
-    end
-    local hash = vim.fn.sha256(f:read("*a"))
-    f:close()
-    local db = io.open(vim.fn.stdpath("state") .. "/trust", "r")
-    if not db then
-        return "unknown"
-    end
-    local status = "unknown"
-    for line in db:lines() do
-        local h, p = line:match("^(%S+) (.+)$")
-        if p == full then
-            status = h == "!" and "denied" or (h == hash and "allowed" or "unknown")
-        end
-    end
-    db:close()
-    return status
-end
-
---- Trust a file in Neovim's trust database. Before Neovim 0.12,
---- vim.secure.trust only accepts "allow" for a buffer, not a path.
-function M.trust_allow(path)
-    vim.fn.mkdir(vim.fn.stdpath("state"), "p") -- the database lives here
-    if pcall(vim.secure.trust, { action = "allow", path = path }) then
+--- Connect to `vim.g.herdr_connection` (set by a project's trusted .nvim.lua),
+--- if set and nothing is connected yet.
+function M.autoconnect()
+    local want = vim.g.herdr_connection
+    if want == nil or want == "" or M.active then
         return
     end
-    local existing = vim.fn.bufnr(vim.fn.fnamemodify(path, ":p"))
-    local buf = existing ~= -1 and existing or vim.fn.bufadd(path)
-    vim.fn.bufload(buf)
-    vim.secure.trust({ action = "allow", bufnr = buf })
-    if existing == -1 then
-        pcall(vim.api.nvim_buf_delete, buf, { force = true })
+    if type(want) == "table" then
+        return M.switch(want)
     end
-end
-
---- Read a trusted project file into a connection. Returns nil and a reason
---- when it is not trusted (Neovim asks, via vim.secure.read) or invalid.
-function M.read_project(path)
-    local content = vim.secure.read(path)
-    if not content then
-        return nil, "not trusted"
-    end
-    return parse_project(content)
-end
-
---- Connect from a project file, if one applies. Never replaces an active
---- connection; tells you when the project asks for a different one.
---- Untrusted files are not read silently: you get a visible choice (trust and
---- connect / not now / never), recorded in Neovim's trust database.
-function M.autoconnect(dir)
-    local path = M.find_project(dir)
-    if not path then
-        return
-    end
-    local trust = M.trust_status(path)
-    if trust == "denied" then
-        return
-    end
-    local f = io.open(path, "r")
-    local content = f and f:read("*a") or ""
-    if f then
-        f:close()
-    end
-    local c, err = parse_project(content)
-    if not c then
-        return vim.notify("herdr: " .. vim.fn.fnamemodify(path, ":~") .. ": " .. err, vim.log.levels.WARN)
-    end
-    local function go(conn)
-        if M.active then
-            if not M.same(conn, M.active) then
-                vim.notify(
-                    "herdr: "
-                        .. vim.fn.fnamemodify(path, ":~")
-                        .. " asks for "
-                        .. M.label(conn)
-                        .. "; use :Herdr connect to switch",
-                    vim.log.levels.INFO
-                )
-            end
-            return
-        end
-        M.switch(conn)
-    end
-    local function connect()
-        if c.profile then
-            return M.resolve(c.profile, function(conn)
-                if type(c.projects_dir) == "string" and c.projects_dir ~= "" then
-                    conn.projects_dir = c.projects_dir
-                end
-                go(conn)
-            end)
-        end
-        go(c)
-    end
-    if trust == "allowed" then
-        return connect()
-    end
-    if M.active then
-        return -- don't interrupt an active connection with a trust prompt
-    end
-    local what = c.profile and ("profile '" .. c.profile .. "'") or M.label(c)
-    -- Defer so the prompt shows after startup UI (e.g. a dashboard) settles.
-    vim.defer_fn(function()
-        vim.ui.select({ "Trust and connect", "Not now", "Never (deny)" }, {
-            prompt = "herdr: " .. vim.fn.fnamemodify(path, ":~") .. " wants to connect to " .. what,
-        }, function(choice)
-            -- vim.secure.trust writes into stdpath("state"), which may not exist yet.
-            if choice == "Trust and connect" or choice == "Never (deny)" then
-                vim.fn.mkdir(vim.fn.stdpath("state"), "p")
-            end
-            if choice == "Trust and connect" then
-                M.trust_allow(path)
-                connect()
-            elseif choice == "Never (deny)" then
-                vim.secure.trust({ action = "deny", path = path })
-            end
-        end)
-    end, 200)
+    M.resolve(tostring(want), M.switch)
 end
 
 -- UI ---------------------------------------------------------------------------

@@ -45,50 +45,65 @@ T["connecting without herdr shows a clear error"] = function()
     eq(tree_text():find("not found", 1, true) ~= nil, true)
 end
 
-T["project file asks before connecting"] = function()
-    local dir = child.lua_get("vim.fn.tempname()")
-    child.lua(
-        [[
-        local dir = ...
-        vim.fn.mkdir(dir .. "/sub", "p")
-        vim.fn.writefile({ '{"remote": "herdr-nvim-test-host", "session": "agents"}' }, dir .. "/.herdr-nvim.json")
-        require("herdr").setup({})
-        _G.asked, _G.switched = nil, nil
-        vim.ui.select = function(_, opts, cb) _G.asked = opts.prompt; cb(_G.answer) end
-        require("herdr.connection").switch = function(c) _G.switched = c end
-    ]],
-        { dir }
-    )
-    child.lua([[_G.answer = "Not now"; require("herdr.connection").autoconnect(...)]], { dir .. "/sub" })
-    H.wait_child(child, "_G.asked ~= nil")
-    eq(child.lua_get("_G.asked"):find("herdr-nvim-test-host", 1, true) ~= nil, true)
-    eq(child.lua_get("_G.switched"), vim.NIL)
+T["a trusted .nvim.lua (exrc) connects via vim.g.herdr_connection"] = function()
+    local dir = vim.fn.tempname()
+    vim.fn.mkdir(dir, "p")
+    dir = assert(vim.uv.fs_realpath(dir)) -- trust entries use real paths (/var -> /private/var on macOS)
+    local file = dir .. "/.nvim.lua"
+    vim.fn.writefile({ 'vim.g.herdr_connection = "herdr-nvim-test-host:agents"' }, file)
+    -- Trust it the way :trust does (by buffer: path-based "allow" is 0.12+ only).
+    vim.fn.mkdir(vim.fn.stdpath("state"), "p")
+    local buf = vim.fn.bufadd(file)
+    vim.cmd("noautocmd call bufload(" .. buf .. ")") -- no filetype plugins in the runner
+    vim.secure.trust({ action = "allow", bufnr = buf })
+    vim.api.nvim_buf_delete(buf, { force = true })
 
-    child.lua([[_G.answer = "Trust and connect"; require("herdr.connection").autoconnect(...)]], { dir .. "/sub" })
-    H.wait_child(child, "_G.switched ~= nil")
-    eq(child.lua_get("_G.switched.remote"), "herdr-nvim-test-host")
-    eq(child.lua_get([[require("herdr.connection").trust_status(...)]], { dir .. "/.herdr-nvim.json" }), "allowed")
-
-    -- Editing the file resets its trust.
-    child.lua([[vim.fn.writefile({ '{"remote": "other"}' }, ...)]], { dir .. "/.herdr-nvim.json" })
-    eq(child.lua_get([[require("herdr.connection").trust_status(...)]], { dir .. "/.herdr-nvim.json" }), "unknown")
+    -- 'exrc' is skipped with `-u`/`--clean` (mini.test children always use
+    -- --clean), so run a standalone Neovim like a normal user: a user config
+    -- (in the isolated XDG_CONFIG_HOME) that loads the test init.
+    local user_config = vim.env.XDG_CONFIG_HOME .. "/nvim/init.lua"
+    vim.fn.mkdir(vim.fn.fnamemodify(user_config, ":h"), "p")
+    vim.fn.writefile({
+        ("dofile(%q)"):format(H.root .. "/tests/init.lua"),
+        'require("herdr").setup({ herdr_bin = "herdr-nvim-test-missing" })',
+    }, user_config)
+    -- herdr-nvim connects on VimEnter, after the project config ran; report after it.
+    local probe = [[autocmd VimEnter * ++once lua
+        local c = require("herdr.connection")
+        vim.wait(3000, function() return c.active ~= nil end, 20)
+        io.write("var=" .. tostring(vim.g.herdr_connection) .. " active=" .. c.label(c.active))
+        c.disconnect()
+        vim.cmd("qa!")
+    ]]
+    local res = vim.system({
+        vim.v.progpath,
+        "--headless",
+        "--cmd",
+        "set exrc | cd " .. dir,
+        "-c",
+        (probe:gsub("\n%s*", " ")),
+    }, { text = true }):wait(15000)
+    vim.fn.delete(user_config)
+    eq(res.stdout, "var=herdr-nvim-test-host:agents active=herdr-nvim-test-host:agents")
+    vim.fn.delete(dir, "rf")
 end
 
-T["project file with an injected ssh option is rejected"] = function()
-    local path = child.lua_get("vim.fn.tempname()") .. ".json"
-    child.lua(
-        [[
-        local path = ...
-        vim.fn.writefile({ '{"remote": "-oProxyCommand=touch /tmp/pwned"}' }, path)
-        require("herdr.connection").trust_allow(path)
-    ]],
-        { path }
-    )
-    eq(
-        child.lua_get([[select(2, require("herdr.connection").read_project(...))]], { path }):find("invalid", 1, true)
-            ~= nil,
-        true
-    )
+T["no vim.g.herdr_connection: nothing connects"] = function()
+    child.lua([[require("herdr").setup({})]])
+    vim.wait(200)
+    eq(child.lua_get([[require("herdr.connection").active]]), vim.NIL)
+end
+
+T["vim.g.herdr_connection with an injected ssh option is rejected"] = function()
+    child.lua([[
+        vim.g.herdr_connection = { remote = "-oProxyCommand=touch /tmp/pwned", session = "main" }
+        _G.msgs = {}
+        vim.notify = function(m) table.insert(_G.msgs, m) end
+        require("herdr").setup({})
+    ]])
+    H.wait_child(child, "#_G.msgs > 0")
+    eq(child.lua_get([[require("herdr.connection").active]]), vim.NIL)
+    eq(child.lua_get("_G.msgs[1]"):find("invalid SSH target", 1, true) ~= nil, true)
 end
 
 T["checkhealth runs"] = function()

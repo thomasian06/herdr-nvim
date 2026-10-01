@@ -41,18 +41,20 @@ function M.setup(opts)
     set_keymaps()
     require("herdr.notify").setup()
     require("herdr.history").setup()
-    -- Nothing connects on its own, except a trusted project file
-    -- (.herdr-nvim.json) at startup or after :cd while disconnected.
-    local group = vim.api.nvim_create_augroup("herdr_autoconnect", { clear = true })
+    -- Nothing connects on its own, except a project's vim.g.herdr_connection
+    -- (set by a trusted .nvim.lua; Neovim runs those at startup with 'exrc').
     local function autoconnect()
         require("herdr.connection").autoconnect()
     end
     if vim.v.vim_did_enter == 1 then
         vim.schedule(autoconnect)
     else
-        vim.api.nvim_create_autocmd("VimEnter", { group = group, once = true, callback = autoconnect })
+        vim.api.nvim_create_autocmd("VimEnter", {
+            group = vim.api.nvim_create_augroup("herdr_autoconnect", { clear = true }),
+            once = true,
+            callback = autoconnect,
+        })
     end
-    vim.api.nvim_create_autocmd("DirChanged", { group = group, pattern = "global", callback = autoconnect })
     vim.api.nvim_create_autocmd("VimLeavePre", {
         group = vim.api.nvim_create_augroup("herdr_transport", { clear = true }),
         callback = function()
@@ -62,6 +64,15 @@ function M.setup(opts)
             require("herdr.transport").shutdown()
         end,
     })
+end
+
+--- Connect to a profile name, "host[:session]", or a connection table.
+function M.connect(target)
+    local connection = require("herdr.connection")
+    if type(target) == "table" then
+        return connection.switch(target)
+    end
+    connection.resolve(tostring(target), connection.switch)
 end
 
 --- Toggle the herdr tree.

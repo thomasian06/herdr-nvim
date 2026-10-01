@@ -150,21 +150,21 @@ marks, |:edit|, sessions and buffer pickers work with agent terminals.
 =======================================================================================================================================================
 6. CONNECTIONS                                            *herdr-connections*
 
-Nothing connects on its own. |:Herdr-connect| (<leader>ac, or `C` in the
+Nothing connects on its own (except |herdr-project-config|). |:Herdr-connect| (<leader>ac, or `C` in the
 tree) offers the current and last-used connection, local Herdr, `profiles`
 (and `remote`/`session`) from setup(), Herdr's own saved machines
 (`herdr machine add`), profiles saved with |:Herdr-save|, and "New
 connection...". Saved profiles live in
 `stdpath("data")/herdr-nvim/connections.json`.
 
-                                                         *herdr-project-file*
-A `.herdr-nvim.json` in the working directory (or a parent) connects
-automatically when Neovim starts there, or after |:cd| while disconnected: >json
-    { "remote": "devbox", "session": "main" }
-<or `{ "profile": "devbox" }`. The first time (and after the file changes)
-you choose Trust and connect / Not now / Never; the choice is kept in
-Neovim's trust database (see |vim.secure|). It never replaces an active
-connection.
+                                                      *herdr-project-config*
+To connect automatically in a project, use Neovim's project-local config
+('exrc'): set `vim.o.exrc = true`, then add a `.nvim.lua` to the project: >lua
+    vim.g.herdr_connection = "devbox"   -- profile name or "host[:session]"
+<or a table `{ remote = ..., session = ..., projects_dir = ... }`. Neovim asks
+to trust the file first (|:trust|); herdr-nvim then connects at startup
+unless something is already connected. Neovim 0.12+ also searches parent
+directories.
 
                                                               *herdr-notify*
 When an agent needs input or finishes, herdr-nvim plays Herdr's sound and

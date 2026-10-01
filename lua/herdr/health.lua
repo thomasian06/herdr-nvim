@@ -34,28 +34,13 @@ function M.check()
     end
 
     health.start("herdr-nvim: connection")
-    local project = connection.find_project()
-    if project then
-        local trusted = vim.secure.trust
-            and (function()
-                local ok, list = pcall(function()
-                    return vim.fn.readfile(vim.fn.stdpath("state") .. "/trust")
-                end)
-                local path = vim.fn.fnamemodify(project, ":p")
-                for _, line in ipairs(ok and list or {}) do
-                    if line:find(path, 1, true) then
-                        return true
-                    end
-                end
-                return false
-            end)()
-        health.info(
-            "project file: "
-                .. vim.fn.fnamemodify(project, ":~")
-                .. (trusted and " (trusted)" or " (not trusted yet; Neovim will ask on connect)")
-        )
+    local want = vim.g.herdr_connection
+    if want ~= nil and want ~= "" then
+        health.info("project connection (vim.g.herdr_connection): " .. vim.inspect(want))
+    elseif vim.o.exrc then
+        health.info("no vim.g.herdr_connection here; connect with :Herdr connect")
     else
-        health.info("no " .. connection.PROJECT_FILE .. " here; connect manually with :Herdr connect")
+        health.info("'exrc' is off: set vim.o.exrc = true to use a project's .nvim.lua (vim.g.herdr_connection)")
     end
     if not c then
         health.info("not connected")
