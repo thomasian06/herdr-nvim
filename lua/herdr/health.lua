@@ -1,5 +1,6 @@
 -- :checkhealth herdr
 local M = {}
+local health = vim.health
 
 local function run(cmd, timeout)
     local ok, obj = pcall(vim.system, cmd, { text = true })
@@ -9,8 +10,22 @@ local function run(cmd, timeout)
     return obj:wait(timeout or 20000)
 end
 
+-- The versions CI tests; older ones are not supported.
+local MIN_NVIM = "0.12"
+local MIN_HERDR = "0.9.3"
+
+--- Report a `herdr --version` output, warning when it is older than supported.
+local function herdr_version(label, output)
+    local text = vim.trim(output or "")
+    local v = text:match("(%d+%.%d+%.%d+)")
+    if v and vim.version.lt(v, MIN_HERDR) then
+        health.warn(("%s: %s (herdr-nvim needs Herdr %s+)"):format(label, text, MIN_HERDR))
+    else
+        health.ok(label .. ": " .. (text ~= "" and text or "herdr"))
+    end
+end
+
 function M.check()
-    local health = vim.health
     local config = require("herdr.config")
     local connection = require("herdr.connection")
     local transport = require("herdr.transport")
@@ -18,10 +33,10 @@ function M.check()
     local c = connection.current()
 
     health.start("herdr-nvim: Neovim")
-    if vim.fn.has("nvim-0.10") == 1 then
+    if vim.fn.has("nvim-" .. MIN_NVIM) == 1 then
         health.ok("Neovim " .. tostring(vim.version()))
     else
-        health.error("Neovim 0.10+ is required")
+        health.error("Neovim " .. MIN_NVIM .. "+ is required (found " .. tostring(vim.version()) .. ")")
     end
     if package.loaded["snacks"] then
         health.ok("snacks.nvim found: picker with live preview, explorer styling")
@@ -42,7 +57,7 @@ function M.check()
         health.info("not connected")
         local local_herdr = vim.fn.executable(o.herdr_bin) == 1
         if local_herdr then
-            health.ok("local herdr: " .. vim.trim(run({ o.herdr_bin, "--version" }).stdout or ""))
+            herdr_version("local herdr", run({ o.herdr_bin, "--version" }).stdout)
         else
             health.info("local herdr not installed (needed for a local server; recommended for remote)")
         end
@@ -54,8 +69,7 @@ function M.check()
     health.info("connected to " .. connection.label(c))
     local local_herdr = vim.fn.executable(o.herdr_bin) == 1
     if local_herdr then
-        local v = run({ o.herdr_bin, "--version" })
-        health.ok("local herdr: " .. vim.trim(v.stdout or ""))
+        herdr_version("local herdr", run({ o.herdr_bin, "--version" }).stdout)
     elseif c.remote then
         health.info(
             "local herdr not installed (optional for remote): terminals will attach by running herdr on the remote,"
@@ -124,8 +138,7 @@ function M.check()
             c.remote,
             q .. " --version; " .. q .. " --session " .. vim.fn.shellescape(c.session) .. " status server --json",
         }, 45000)
-        local version = (info.stdout or ""):match("^(herdr [^\n]+)")
-        health.ok("remote " .. (version or "herdr") .. " at " .. bin)
+        herdr_version("remote herdr at " .. bin, (info.stdout or ""):match("^(herdr [^\n]+)"))
         local st = transport.parse_status((info.stdout or ""):match("\n(%b{})") or "")
         if st.running then
             health.ok("remote server running (" .. tostring(st.version or "?") .. ")")

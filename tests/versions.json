@@ -1,13 +1,7 @@
 {
   "_comment": "Edit this file to change what the tests run against, then run `make deps-update` to regenerate tests/deps.lock.json.",
-  "neovim": [
-    "v0.10.4",
-    "v0.11.7",
-    "v0.12.5"
-  ],
-  "herdr": [
-    "0.9.3"
-  ],
+  "neovim": "v0.12.5",
+  "herdr": "0.9.3",
   "platforms": [
     "macos-aarch64",
     "linux-x86_64"

@@ -75,27 +75,15 @@ local function event(name, data)
     vim.api.nvim_exec_autocmds("User", { pattern = name, data = data })
 end
 
---- Parse `herdr status server` output: JSON (0.9.0+), else "key: value" text.
+--- Parse `herdr status server --json` output.
 ---@return table { running: boolean, socket: string?, version: string?, compatible: boolean? }
 function M.parse_status(stdout)
     local ok, data = pcall(vim.json.decode, stdout or "", { luanil = { object = true, array = true } })
-    if ok and type(data) == "table" then
-        data.running = data.running == true or data.status == "running"
-        return data
+    if not ok or type(data) ~= "table" then
+        return { running = false }
     end
-    local t = {}
-    for line in (stdout or ""):gmatch("[^\n]+") do
-        local k, v = line:match("^%s*([%w_]+):%s*(.-)%s*$")
-        if k then
-            t[k] = v
-        end
-    end
-    return {
-        running = t.status == "running",
-        socket = t.socket,
-        version = t.version,
-        compatible = t.private_protocol_compatible == "yes",
-    }
+    data.running = data.running == true or data.status == "running"
+    return data
 end
 
 local reconnecting = false -- a connection was lost and is not back yet

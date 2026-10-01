@@ -433,14 +433,9 @@ function M.open_many(panes)
     end
 end
 
---- Start a terminal job in the current buffer. `jobstart({ term = true })` is
---- Neovim 0.11+; `termopen()` does the same on 0.10 (deprecated later).
+--- Start a terminal job in the current buffer.
 function M.termopen(cmd, opts)
-    if vim.fn.has("nvim-0.11") == 1 then
-        return vim.fn.jobstart(cmd, vim.tbl_extend("force", opts, { term = true }))
-    end
-    ---@diagnostic disable-next-line: deprecated (only used on Neovim 0.10)
-    return vim.fn.termopen(cmd, opts)
+    return vim.fn.jobstart(cmd, vim.tbl_extend("force", opts, { term = true }))
 end
 
 -- herdr:// buffers --------------------------------------------------------------

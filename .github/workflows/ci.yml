@@ -33,28 +33,14 @@ jobs:
       - run: selene lua plugin tests
       - run: make typecheck
 
-  matrix:
-    runs-on: ubuntu-latest
-    outputs:
-      neovim: ${{ steps.versions.outputs.neovim }}
-      herdr: ${{ steps.versions.outputs.herdr }}
-    steps:
-      - uses: actions/checkout@v7
-      - id: versions
-        run: |
-          echo "neovim=$(jq -c .neovim tests/versions.json)" >> "$GITHUB_OUTPUT"
-          echo "herdr=$(jq -c .herdr tests/versions.json)" >> "$GITHUB_OUTPUT"
-
   test:
-    needs: matrix
-    name: test (${{ matrix.os }}, neovim ${{ matrix.neovim }}, herdr ${{ matrix.herdr }})
+    # The latest Neovim and Herdr releases, pinned in tests/versions.json.
+    name: test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        neovim: ${{ fromJSON(needs.matrix.outputs.neovim) }}
-        herdr: ${{ fromJSON(needs.matrix.outputs.herdr) }}
     steps:
       - uses: actions/checkout@v7
       # Any Neovim, only to run tests/deps.lua; the tested one comes from the lock.
@@ -69,23 +55,7 @@ jobs:
       - name: Run tests
         run: |
           nvim -l tests/deps.lua install
-          NVIM_BIN=$(nvim -l tests/deps.lua install-nvim "${{ matrix.neovim }}")
-          HERDR_BIN=$(nvim -l tests/deps.lua install-herdr "${{ matrix.herdr }}")
+          NVIM_BIN=$(nvim -l tests/deps.lua install-nvim)
+          HERDR_BIN=$(nvim -l tests/deps.lua install-herdr)
+          echo "Neovim: $("$NVIM_BIN" --version | head -1), Herdr: $("$HERDR_BIN" --version)"
           HERDR_BIN="$HERDR_BIN" "$NVIM_BIN" --headless --noplugin -u tests/init.lua -c "luafile tests/run.lua"
-
-  nightly:
-    # Early warning for upcoming Neovim changes; does not block.
-    runs-on: ubuntu-latest
-    continue-on-error: true
-    steps:
-      - uses: actions/checkout@v7
-      - uses: rhysd/action-setup-vim@v1
-        with:
-          neovim: true
-          version: nightly
-      - name: Run tests
-        run: |
-          nvim -l tests/deps.lua install
-          HERDR=$(jq -r '.herdr[-1]' tests/versions.json)
-          HERDR_BIN=$(nvim -l tests/deps.lua install-herdr "$HERDR")
-          HERDR_BIN="$HERDR_BIN" nvim --headless --noplugin -u tests/init.lua -c "luafile tests/run.lua"

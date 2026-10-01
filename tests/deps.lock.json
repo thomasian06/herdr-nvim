@@ -1,47 +1,25 @@
 {
   "herdr": {
-    "0.9.3": {
-      "linux-x86_64": {
-        "sha256": "18a8dc65f1c2fa485884344356dea1cfd911c6f06cf46fa78e193f4087f4dba7",
-        "url": "https://github.com/herdrdev/herdr/releases/download/v0.9.3/herdr-linux-x86_64"
-      },
-      "macos-aarch64": {
-        "sha256": "5173a3e0ae42d5d1ab7ebfa5d5e6329f7c3d23f8e1a3677c7ce3231da2884157",
-        "url": "https://github.com/herdrdev/herdr/releases/download/v0.9.3/herdr-macos-aarch64"
-      }
-    }
+    "linux-x86_64": {
+      "sha256": "18a8dc65f1c2fa485884344356dea1cfd911c6f06cf46fa78e193f4087f4dba7",
+      "url": "https://github.com/herdrdev/herdr/releases/download/v0.9.3/herdr-linux-x86_64"
+    },
+    "macos-aarch64": {
+      "sha256": "5173a3e0ae42d5d1ab7ebfa5d5e6329f7c3d23f8e1a3677c7ce3231da2884157",
+      "url": "https://github.com/herdrdev/herdr/releases/download/v0.9.3/herdr-macos-aarch64"
+    },
+    "version": "0.9.3"
   },
   "neovim": {
-    "v0.10.4": {
-      "linux-x86_64": {
-        "sha256": "95aaa8e89473f5421114f2787c13ae0ec6e11ebbd1a13a1bd6fcf63420f8073f",
-        "url": "https://github.com/neovim/neovim/releases/download/v0.10.4/nvim-linux-x86_64.tar.gz"
-      },
-      "macos-aarch64": {
-        "sha256": "3d7b07ec9b491d2a3d55167bc1db1cfa96773a1a37e74ea384cb15ab0189223b",
-        "url": "https://github.com/neovim/neovim/releases/download/v0.10.4/nvim-macos-arm64.tar.gz"
-      }
+    "linux-x86_64": {
+      "sha256": "bce0f56eda1f1b1db6eee8f4133d7a38813ea07933837dd1777411ca384c6875",
+      "url": "https://github.com/neovim/neovim/releases/download/v0.12.5/nvim-linux-x86_64.tar.gz"
     },
-    "v0.11.7": {
-      "linux-x86_64": {
-        "sha256": "38a7c6317f94503841096c00e8fde05ef04b9472fc9d7d62b6e033cecd6f7991",
-        "url": "https://github.com/neovim/neovim/releases/download/v0.11.7/nvim-linux-x86_64.tar.gz"
-      },
-      "macos-aarch64": {
-        "sha256": "9c84686ce84bbab725ff3d88ca3ac1d6da5a72128b68d9dd8094e34d4049a126",
-        "url": "https://github.com/neovim/neovim/releases/download/v0.11.7/nvim-macos-arm64.tar.gz"
-      }
+    "macos-aarch64": {
+      "sha256": "65fb000099e47ca1b762584c484cc833f40e30851a0ec450d4174e16317c1f9b",
+      "url": "https://github.com/neovim/neovim/releases/download/v0.12.5/nvim-macos-arm64.tar.gz"
     },
-    "v0.12.5": {
-      "linux-x86_64": {
-        "sha256": "bce0f56eda1f1b1db6eee8f4133d7a38813ea07933837dd1777411ca384c6875",
-        "url": "https://github.com/neovim/neovim/releases/download/v0.12.5/nvim-linux-x86_64.tar.gz"
-      },
-      "macos-aarch64": {
-        "sha256": "65fb000099e47ca1b762584c484cc833f40e30851a0ec450d4174e16317c1f9b",
-        "url": "https://github.com/neovim/neovim/releases/download/v0.12.5/nvim-macos-arm64.tar.gz"
-      }
-    }
+    "version": "v0.12.5"
   },
   "plugins": {
     "mini.test": {

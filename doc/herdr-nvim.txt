@@ -200,11 +200,11 @@ apply. Configure with the `notify` option.
 =====
 7. REQUIREMENTS                                          *herdr-requirements*
 
-Local: Neovim 0.10+; OpenSSH with non-interactive access to the host for a
+Local: Neovim 0.12+; OpenSSH with non-interactive access to the host for a
 remote server; Herdr (required for a local server, recommended for remote);
 optionally snacks.nvim and a Nerd Font.
 
-Remote: Herdr on PATH or in `remote_path`, a server for the session (the
+Remote: Herdr 0.9.3+ on PATH or in `remote_path`, a server for the session (the
 plugin can start it), and SSH unix-socket forwarding allowed.
 
 Remote servers use one SSH connection: your own ControlMaster when your ssh
