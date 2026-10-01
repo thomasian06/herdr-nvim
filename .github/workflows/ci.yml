@@ -1,0 +1,91 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    env:
+      SELENE_VERSION: 0.31.0
+      LUALS_VERSION: 3.19.1
+    steps:
+      - uses: actions/checkout@v7
+      - uses: rhysd/action-setup-vim@v1
+        with:
+          neovim: true
+          version: stable
+      - uses: JohnnyMorganz/stylua-action@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          version: v2.5.2
+          args: --check lua plugin tests
+      - name: Install selene and lua-language-server
+        run: |
+          mkdir -p "$HOME/.local/bin" "$HOME/.local/luals"
+          curl -fsSL -o selene.zip "https://github.com/Kampfkarren/selene/releases/download/${SELENE_VERSION}/selene-${SELENE_VERSION}-linux.zip"
+          unzip -q selene.zip -d "$HOME/.local/bin" && chmod +x "$HOME/.local/bin/selene"
+          curl -fsSL "https://github.com/LuaLS/lua-language-server/releases/download/${LUALS_VERSION}/lua-language-server-${LUALS_VERSION}-linux-x64.tar.gz" | tar -xz -C "$HOME/.local/luals"
+          ln -s "$HOME/.local/luals/bin/lua-language-server" "$HOME/.local/bin/lua-language-server"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - run: selene lua plugin tests
+      - run: make typecheck
+
+  matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      neovim: ${{ steps.versions.outputs.neovim }}
+      herdr: ${{ steps.versions.outputs.herdr }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: versions
+        run: |
+          echo "neovim=$(jq -c .neovim tests/versions.json)" >> "$GITHUB_OUTPUT"
+          echo "herdr=$(jq -c .herdr tests/versions.json)" >> "$GITHUB_OUTPUT"
+
+  test:
+    needs: matrix
+    name: test (${{ matrix.os }}, neovim ${{ matrix.neovim }}, herdr ${{ matrix.herdr }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        neovim: ${{ fromJSON(needs.matrix.outputs.neovim) }}
+        herdr: ${{ fromJSON(needs.matrix.outputs.herdr) }}
+    steps:
+      - uses: actions/checkout@v7
+      # Any Neovim, only to run tests/deps.lua; the tested one comes from the lock.
+      - uses: rhysd/action-setup-vim@v1
+        with:
+          neovim: true
+          version: stable
+      - uses: actions/cache@v6
+        with:
+          path: .tests
+          key: tests-${{ runner.os }}-${{ hashFiles('tests/deps.lock.json') }}
+      - name: Run tests
+        run: |
+          nvim -l tests/deps.lua install
+          NVIM_BIN=$(nvim -l tests/deps.lua install-nvim "${{ matrix.neovim }}")
+          HERDR_BIN=$(nvim -l tests/deps.lua install-herdr "${{ matrix.herdr }}")
+          HERDR_BIN="$HERDR_BIN" "$NVIM_BIN" --headless --noplugin -u tests/init.lua -c "luafile tests/run.lua"
+
+  nightly:
+    # Early warning for upcoming Neovim changes; does not block.
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: rhysd/action-setup-vim@v1
+        with:
+          neovim: true
+          version: nightly
+      - name: Run tests
+        run: |
+          nvim -l tests/deps.lua install
+          HERDR=$(jq -r '.herdr[-1]' tests/versions.json)
+          HERDR_BIN=$(nvim -l tests/deps.lua install-herdr "$HERDR")
+          HERDR_BIN="$HERDR_BIN" nvim --headless --noplugin -u tests/init.lua -c "luafile tests/run.lua"

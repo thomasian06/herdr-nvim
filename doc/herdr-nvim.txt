@@ -1,0 +1,255 @@
+*herdr-nvim.txt*  Herdr sessions in Neovim: explorer-style tree and picker
+
+==============================================================================
+CONTENTS                                                     *herdr-contents*
+
+  1. Introduction ........................................ |herdr-intro|
+  2. Setup ............................................... |herdr-setup|
+  3. Commands ............................................ |herdr-commands|
+  4. Tree ................................................ |herdr-tree|
+  5. Picker .............................................. |herdr-picker|
+  6. Connections ......................................... |herdr-connections|
+  7. Requirements ........................................ |herdr-requirements|
+  8. Behavior ............................................ |herdr-behavior|
+  9. Events .............................................. |herdr-events|
+
+==============================================================================
+1. INTRODUCTION                                                 *herdr-intro*
+
+herdr-nvim is a client for a Herdr (https://herdr.dev) session. Spaces show
+as folders and terminals/agents as files, with live agent status. Any
+terminal opens as a Neovim |:terminal| via `herdr terminal attach`.
+
+Herdr keeps running the agents; Neovim is just another client. The server can
+be local or on a remote machine reached over SSH.
+
+==============================================================================
+2. SETUP                                                        *herdr-setup*
+
+lazy.nvim: >lua
+    { "thomasian06/herdr-nvim", opts = { remote = "devbox" } }
+<
+Otherwise: >lua
+    require("herdr").setup({})
+<
+Options (defaults shown):                                     *herdr-options* >lua
+    require("herdr").setup({
+      remote = nil,            -- optional SSH target offered as a profile
+      session = "main",        -- session for `remote`
+      profiles = {},           -- { { name = "devbox", remote = "devbox" } }
+      projects_dir = nil,      -- where new spaces start ("~" = server home)
+      status_style = "herdr",  -- Herdr's [ui] status_indicators, or
+                               -- "dots" / "symbols"
+      mark_seen = "local",     -- "local", or "herdr" to also tell Herdr
+      auto_start = "ask",      -- start a missing server: "ask"|true|false
+      remote_attach = "auto",  -- "auto" | "ssh" (see |herdr-requirements|)
+      herdr_bin = "herdr",
+      remote_path = { "$HOME/.local/bin" },
+      keymaps = { toggle = "<leader>aa", pick = "<leader>ap",
+        connect = "<leader>ac", new_space = "<leader>an",
+        compose = "<leader>ai" },
+      tree = { width = nil, position = nil, icons = nil, indent = nil,
+        keys = { ... } },      -- see |herdr-keys|
+      picker = { keys = { ... } },
+      terminal = { auto_insert = true, winbar = true, keys = { ... } },
+      history = { enabled = true, limit = 100000, keys = { ... } },
+      compose = { height = 8, keys = { ... } },
+      notify = { enabled = true, sound = "herdr", message = true,
+        on = { done = true, blocked = true } },
+    })
+<
+                                                                 *herdr-keys*
+Every key is configurable. Key tables map a key to an action name; `false`
+disables a default; `{ "action", mode = { "n", "i" } }` picks the modes. Your
+keys merge with the defaults (full defaults in the README). Actions:
+
+  tree      open expand collapse vsplit split tab takeover open_all add
+            add_space rename delete focus connect collapse_all refresh close
+            help
+  picker    vsplit split tab focus
+  terminal  normal_mode nav_left nav_down nav_up nav_right history_wheel
+            history_half_page history_page history_line history_up
+            history_top history_search history_search_back compose
+  history   live_insert live compose
+  compose   send paste close
+
+Example: >lua
+    opts = {
+      keymaps = { compose = "<leader>ae" },
+      tree = { keys = { x = "delete", d = false } },
+      terminal = { keys = { ["<C-l>"] = false, gi = "compose" } },
+    }
+<
+The tree borrows icons, indent guides, width and side from snacks.nvim's
+explorer or neo-tree when present.
+
+==============================================================================
+3. COMMANDS                                                  *herdr-commands*
+
+:Herdr [toggle]                                        *:Herdr* *:Herdr-toggle*
+    Toggle the tree.
+
+:Herdr pick                                                     *:Herdr-pick*
+    Spaces/agents picker. Uses snacks.nvim when installed (with a live
+    preview of each terminal's screen), otherwise |vim.ui.select()|.
+
+:Herdr open {pane_id}                                           *:Herdr-open*
+    Open a terminal, e.g. `:Herdr open w1:p1`.
+
+:Herdr refresh                                               *:Herdr-refresh*
+    Re-fetch the session snapshot.
+
+:Herdr agents                                                 *:Herdr-agents*
+    Open every agent in the session, tiled in a new tab.
+
+:Herdr compose                                               *:Herdr-compose*
+    Compose input for the terminal in the current window (see |herdr-compose|).
+
+:Herdr new-space [{name}]                                  *:Herdr-new-space*
+    Create a space and open its terminal (<leader>an). Asks for a name
+    unless given. Starts in the connection's `projects_dir` when set.
+
+:Herdr connect [{profile}|{host}[:{session}]]                *:Herdr-connect*
+    Connect to a server. Without an argument, pick one (|herdr-connections|).
+
+:Herdr disconnect                                         *:Herdr-disconnect*
+    Disconnect.
+
+:Herdr save [{name}]                                           *:Herdr-save*
+    Save the current connection as a profile.
+
+:Herdr forget {name}                                         *:Herdr-forget*
+    Remove a saved profile.
+
+==============================================================================
+4. TREE                                                          *herdr-tree*
+
+Herdr tabs are flattened: a tab with one pane shows as that terminal; a tab
+with split panes becomes a nested group.
+
+  <CR> o          open terminal / toggle space
+  l h             expand / collapse (or jump to parent)
+  s <C-v>         open in vertical split
+  S <C-s>         open in horizontal split
+  t <C-t>         open in new tab
+  T               open, taking over another attach of that pane
+  O               open every terminal under the cursor, tiled in a new tab
+                  (on the root line: every agent)
+  a               add a terminal to the space under the cursor
+                  (on the root line: add a space)
+  A               add a space
+  r               rename
+  d               close in Herdr (asks for confirmation)
+  f               focus in Herdr's own UI
+  C               connect to another server/profile
+  z Z             collapse all
+  R u             refresh
+  q               close the tree
+  ?               help
+
+Statuses look like Herdr's: yellow `●` working, red `●` blocked, teal `●`
+done (not seen yet), green `○` idle (finished and seen), `·` no agent. Herdr
+only marks an agent seen when focused in Herdr itself, so viewing it in
+Neovim also counts (`mark_seen = "local"`, or `"herdr"` to tell Herdr too).
+Glyphs follow Herdr's `[ui] status_indicators`. `↗` marks terminals attached
+in this Neovim.
+
+                                                             *herdr-buffers*
+Terminal buffers are named `herdr://<host or local>:<session>/<pane>/<label>`.
+Opening one attaches that pane (connecting first if needed), so Harpoon
+marks, |:edit|, sessions and buffer pickers work with agent terminals.
+
+==============================================================================
+5. PICKER                                                      *herdr-picker*
+
+  <CR>            open terminal (on a space: its focused terminal)
+  <C-v> <C-s>     open in vertical / horizontal split
+  <C-t>           open in new tab
+  <A-f>           focus in Herdr's own UI
+  <Tab> <CR>      mark several items, then open them all tiled in a new tab
+
+=======================================================================================================================================================
+6. CONNECTIONS                                            *herdr-connections*
+
+Nothing connects on its own (except |herdr-project-config|). |:Herdr-connect| (<leader>ac, or `C` in the
+tree) offers the current and last-used connection, local Herdr, `profiles`
+(and `remote`/`session`) from setup(), Herdr's own saved machines
+(`herdr machine add`), profiles saved with |:Herdr-save|, and "New
+connection...". Saved profiles live in
+`stdpath("data")/herdr-nvim/connections.json`.
+
+                                                      *herdr-project-config*
+To connect automatically in a project, use Neovim's project-local config
+('exrc'): set `vim.o.exrc = true`, then add a `.nvim.lua` to the project: >lua
+    vim.g.herdr_connection = "devbox"   -- profile name or "host[:session]"
+<or a table `{ remote = ..., session = ..., projects_dir = ... }`. Neovim asks
+to trust the file first (|:trust|); herdr-nvim then connects at startup
+unless something is already connected. Neovim 0.12+ also searches parent
+directories.
+
+                                                              *herdr-notify*
+When an agent needs input or finishes, herdr-nvim plays Herdr's sound and
+shows a notification (not for the agent in the focused window), after Herdr's
+`[ui.toast] delay_seconds` and a re-check. Herdr's `[ui.sound]` and
+`[ui.sound.agents]` settings, `HERDR_DISABLE_SOUND` and `HERDR_CONFIG_PATH`
+apply. Configure with the `notify` option.
+
+=====
+7. REQUIREMENTS                                          *herdr-requirements*
+
+Local: Neovim 0.10+; OpenSSH with non-interactive access to the host for a
+remote server; Herdr (required for a local server, recommended for remote);
+optionally snacks.nvim and a Nerd Font.
+
+Remote: Herdr on PATH or in `remote_path`, a server for the session (the
+plugin can start it), and SSH unix-socket forwarding allowed.
+
+Remote servers use one SSH connection: your own ControlMaster when your ssh
+config has a ControlPath for the host and it is running (MFA/password hosts:
+authenticate once with `ssh HOST`), else herdr-nvim's own, which only adds
+options your config leaves unset. Herdr is found in PATH, `remote_path`, or
+the usual install locations. Dropped connections reconnect with backoff and
+reattach open terminals (`User HerdrDisconnected` / `HerdrReconnected`). Both sockets are forwarded and
+terminals attach with the local herdr through the forwarded client socket.
+Without a compatible local herdr, terminals run `herdr terminal attach` on the
+remote instead: one SSH session per open terminal (OpenSSH allows 10 by
+default, `MaxSessions`).
+
+Run `:checkhealth herdr` to check the current connection.
+
+==============================================================================
+8. BEHAVIOR                                                  *herdr-behavior*
+
+- Herdr allows one `terminal attach` client per pane. Opening a pane that is
+  attached elsewhere offers to take it over. Herdr's own UI does not count.
+- While attached, Herdr sizes the pane to the Neovim window.
+- Closing the terminal buffer detaches. `Ctrl-B q` in the terminal also
+  detaches.
+- Terminal buffers of panes closed in Herdr are removed automatically.
+- In a herdr terminal, <Esc> leaves terminal mode and is not sent to the
+  agent; give agents that interrupt on <Esc> another key (see the README for
+  pi), or disable it: `terminal = { keys = { ["<Esc>"] = false } }`. Entering a herdr terminal window
+  enters terminal mode.
+  Each terminal window's winbar shows status, agent, name and space.
+                                                              *herdr-compose*
+- <leader>ai (or `:Herdr compose`) opens a compose split for the current
+  terminal, the last one used, or an agent you pick: edit the agent's input with full Neovim editing, then <CR> (normal)
+  or <C-s> sends it as one prompt (Herdr's agent.prompt; shells get the text
+  plus Enter). <C-g> pastes it into the agent's input without sending; q
+  closes and keeps the draft. Terminal buffers stay read-only.
+- Scrolling up (<C-u> <C-b> <PageUp> <C-y> k gg, mouse wheel) or searching
+  (/ ?) opens a local, cached copy of the terminal's history (colors kept)
+  where everything is native Neovim; i/a return to the live terminal and
+  type, q/<Esc> return to it. The first open loads the latest 1000 lines
+  (Herdr's per-read limit); while attached, the cache syncs in the
+  background and keeps everything since the terminal was opened.
+- <C-h/j/k/l> navigate windows from terminal mode (through vim-tmux-navigator
+  or smart-splits.nvim when installed, so edges reach tmux panes). Set
+  disable/remap them in `terminal.keys` if an agent needs those keys.
+
+==============================================================================
+9. EVENTS                                                      *herdr-events*
+
+`User HerdrAttach` and `User HerdrDetach` fire with `data = { buf, pane_id }`.
+
+ vim:tw=78:ts=8:ft=help:norl:

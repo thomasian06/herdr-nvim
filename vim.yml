@@ -1,0 +1,13 @@
+---
+base: lua51
+globals:
+  jit:
+    any: true
+  vim:
+    any: true
+  # snacks.nvim's global, used only when snacks is installed
+  Snacks:
+    any: true
+  # mini.test's global, in tests only
+  MiniTest:
+    any: true
