@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.svg" alt="herdr-nvim logo: the Herdr ram in Neovim green and blue" width="128" height="128">
+  <img src="assets/logo.svg" alt="herdr-nvim logo: the Herdr ram with the Neovim N on its fleece" width="128" height="128">
 </p>
 
 <h1 align="center">herdr-nvim</h1>
@@ -347,7 +347,7 @@ To try the plugin in isolation: `nvim -u tests/minimal_init.lua` (set `HERDR_REM
 ## License
 
 herdr-nvim is MIT licensed.
-Two assets come from Herdr under the Apache License 2.0:
+Some assets come from other projects:
 
-- The logo is Herdr's ram, recolored in Neovim green and blue; see `assets/NOTICE`.
-- The notification sounds in `assets/sounds/` are used unmodified; see `assets/sounds/NOTICE`.
+- The logo combines Herdr's ram (Apache License 2.0) with the Neovim logo mark by Jason Long (CC BY 3.0); see `assets/NOTICE`.
+- The notification sounds in `assets/sounds/` are Herdr's, used unmodified under the Apache License 2.0; see `assets/sounds/NOTICE`.
