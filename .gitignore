@@ -42,3 +42,4 @@ luac.out
 
 # Local scratch
 /tmp/
+/.tests/
