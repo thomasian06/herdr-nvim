@@ -61,15 +61,15 @@ jobs:
           HERDR_BIN="$HERDR_BIN" "$NVIM_BIN" --headless --noplugin -u tests/init.lua -c "luafile tests/run.lua"
 
   matrix:
-    # The required check: passes only when lint and every test job passed, so
-    # the test matrix can grow without changing branch rules. `always()` makes
-    # it run (and fail) when a needed job failed or was cancelled; a skipped
-    # required check would count as passing.
-    needs: [lint, test]
+    # The required check for the tests: passes only when every test job
+    # passed, so the test matrix can grow without changing branch rules.
+    # `always()` makes it run (and fail) when a test job failed or was
+    # cancelled; a skipped required check would count as passing.
+    needs: test
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - name: All jobs passed
+      - name: All test jobs passed
         env:
           RESULTS: ${{ join(needs.*.result, ' ') }}
         run: |
