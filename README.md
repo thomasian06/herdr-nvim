@@ -101,7 +101,7 @@ require("herdr").setup({
       l = "expand", h = "collapse",
       s = "vsplit", ["<C-v>"] = "vsplit", S = "split", ["<C-s>"] = "split", t = "tab", ["<C-t>"] = "tab",
       T = "takeover", O = "open_all",
-      a = "add", A = "add_space", r = "rename", d = "delete",
+      a = "add", A = "add_space", r = "rename", d = "delete", K = "move_up", J = "move_down",
       f = "focus", C = "connect",
       z = "collapse_all", Z = "collapse_all", R = "refresh", u = "refresh",
       q = "close", ["?"] = "help", ["g?"] = "help",
@@ -230,6 +230,7 @@ Herdr tabs are flattened: a tab with a single pane shows as that terminal, and o
 | `A` | Add a space |
 | `r` | Rename |
 | `d` | Close in Herdr (confirms) |
+| `K` / `J` | Move the space or terminal up / down (Herdr's order; split panes move with their tab) |
 | `f` | Focus in Herdr's own UI |
 | `C` | Connect to another server/profile |
 | `z` / `Z` | Collapse all |
