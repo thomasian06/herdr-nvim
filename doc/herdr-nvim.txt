@@ -67,8 +67,8 @@ disables a default; `{ "action", mode = { "n", "i" } }` picks the modes. Your
 keys merge with the defaults (full defaults in the README). Actions:
 
   tree      open expand collapse vsplit split tab takeover open_all add
-            add_space rename delete focus connect collapse_all refresh close
-            help
+            add_space rename delete move_up move_down focus connect
+            collapse_all refresh close help
   picker    vsplit split tab focus
   terminal  normal_mode nav_left nav_down nav_up nav_right history_wheel
             history_half_page history_page history_line history_up
@@ -143,6 +143,8 @@ with split panes becomes a nested group.
   A               add a space
   r               rename
   d               close in Herdr (asks for confirmation)
+  K J             move the space or terminal up / down (Herdr's order;
+                  split panes move with their tab)
   f               focus in Herdr's own UI
   C               connect to another server/profile
   z Z             collapse all

@@ -165,6 +165,75 @@ T["d closes a terminal"] = function()
     eq(gone, true)
 end
 
+T["K and J reorder spaces and terminals"] = function()
+    local created = server.space("reorder")
+    local ws_id = created.workspace.workspace_id
+    local second = server.request("tab.create", { workspace_id = ws_id, label = "second", focus = false }).tab.tab_id
+    local function spaces()
+        return vim.tbl_map(function(ws)
+            return ws.workspace_id
+        end, snapshot().workspaces)
+    end
+    local function tabs()
+        local ids = {}
+        for _, tab in ipairs(snapshot().tabs) do
+            if tab.workspace_id == ws_id then
+                ids[#ids + 1] = tab.tab_id
+            end
+        end
+        return ids
+    end
+    --- Poll Herdr until fn() is true (a deadline, as each poll waits on a request).
+    local function eventually(fn)
+        local deadline = vim.uv.hrtime() + 5e9
+        while vim.uv.hrtime() < deadline do
+            if fn() then
+                return true
+            end
+            vim.wait(100)
+        end
+        return fn()
+    end
+    local at = vim.fn.index(spaces(), ws_id)
+    eq(tabs(), { created.tab.tab_id, second })
+    child.lua([[require("herdr.state").refresh()]])
+
+    -- K, then J at once: the space moves up and back, and the cursor stays on it.
+    tree_goto("reorder")
+    child.type_keys("K")
+    child.type_keys("J")
+    eq(
+        eventually(function()
+            return vim.fn.index(spaces(), ws_id) == at
+        end),
+        true
+    )
+    child.type_keys("K")
+    eq(
+        eventually(function()
+            return vim.fn.index(spaces(), ws_id) == at - 1
+        end),
+        true
+    )
+    H.wait_child(child, [[vim.api.nvim_get_current_line():find("reorder", 1, true) ~= nil]])
+
+    -- A terminal moves among its space's terminals, and the cursor follows it.
+    -- (The tree is still open: search in it rather than toggling it.)
+    H.wait_child(child, [[vim.fn.search("second", "cw") > 0]])
+    child.type_keys("K")
+    eq(
+        eventually(function()
+            return tabs()[1] == second
+        end),
+        true
+    )
+    H.wait_child(child, [[vim.api.nvim_get_current_line():find("second", 1, true) ~= nil]])
+    -- Already first: K does nothing.
+    child.type_keys("K")
+    vim.wait(300)
+    eq(tabs()[1], second)
+end
+
 T["opening a herdr:// buffer attaches its pane (Harpoon, :edit)"] = function()
     local pane = server.space("eta").root_pane.pane_id
     child.lua([[require("herdr.connection").disconnect()]])

@@ -42,8 +42,8 @@ M.defaults = {
         indent = nil, -- e.g. { vertical = "| ", middle = "|-", last = "`-" }
         -- Keys in the tree: lhs = action (false disables a default). Actions:
         -- open, expand, collapse, vsplit, split, tab, takeover, open_all, add,
-        -- add_space, rename, delete, focus, connect, collapse_all, refresh,
-        -- close, help.
+        -- add_space, rename, delete, move_up, move_down, focus, connect,
+        -- collapse_all, refresh, close, help.
         keys = {
             ["<CR>"] = "open",
             ["o"] = "open",
@@ -62,6 +62,8 @@ M.defaults = {
             ["A"] = "add_space",
             ["r"] = "rename",
             ["d"] = "delete",
+            ["K"] = "move_up",
+            ["J"] = "move_down",
             ["f"] = "focus",
             ["C"] = "connect",
             ["z"] = "collapse_all",

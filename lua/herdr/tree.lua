@@ -473,6 +473,61 @@ function actions.delete()
     api.request(method, { [kind .. "_id"] = id }, done(method))
 end
 
+--- Move the space or terminal under the cursor up (-1) or down (+1) among its
+--- siblings, in Herdr's order. Split panes follow Herdr's layout, so a pane in
+--- a group moves with its tab (the group's row).
+function actions.move(delta)
+    local node = current_node()
+    if not node or node.kind == "root" then
+        return
+    end
+    local s = state.snapshot or {}
+    local kind, id = target(node)
+    local siblings = {}
+    if kind == "workspace" then
+        for _, ws in ipairs(s.workspaces or {}) do
+            siblings[#siblings + 1] = ws.workspace_id
+        end
+    elseif kind == "tab" then
+        for _, tab in ipairs(s.tabs or {}) do
+            if tab.workspace_id == node.workspace_id then
+                siblings[#siblings + 1] = tab.tab_id
+            end
+        end
+    else
+        return vim.notify("herdr: split panes follow Herdr's layout; move their tab instead", vim.log.levels.INFO)
+    end
+    local i = vim.tbl_contains(siblings, id) and vim.fn.index(siblings, id) + 1 or nil
+    local j = i and i + delta
+    if not j or j < 1 or j > #siblings then
+        return
+    end
+    -- Herdr's insert_index is a 0-based position in the list before the move.
+    local insert_index = delta < 0 and j - 1 or j
+    -- Swap with the neighbour in the local snapshot right away, so the tree
+    -- updates at once and a quick second press starts from the new order;
+    -- the refresh after the request confirms it.
+    local list, field = s.workspaces, "workspace_id"
+    if kind == "tab" then
+        list, field = s.tabs, "tab_id"
+    end
+    local a, b
+    for k, item in ipairs(list or {}) do
+        if item[field] == id then
+            a = k
+        elseif item[field] == siblings[j] then
+            b = k
+        end
+    end
+    if a and b then
+        list[a], list[b] = list[b], list[a]
+    end
+    pending_cursor_key = node.key
+    render()
+    local method = kind .. ".move"
+    api.request(method, { [kind .. "_id"] = id, insert_index = insert_index }, done(method))
+end
+
 function actions.focus_in_herdr()
     local node = current_node()
     if not node or node.kind == "root" then
@@ -503,6 +558,20 @@ local ACTIONS = {
     },
     { "rename", "rename", actions.rename },
     { "delete", "close in herdr", actions.delete },
+    {
+        "move_up",
+        "move space/terminal up",
+        function()
+            actions.move(-1)
+        end,
+    },
+    {
+        "move_down",
+        "move space/terminal down",
+        function()
+            actions.move(1)
+        end,
+    },
     { "focus", "focus in herdr's own UI", actions.focus_in_herdr },
     {
         "connect",
