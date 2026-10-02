@@ -114,6 +114,29 @@ T["history shows output that scrolled off the screen"] = function()
     H.wait_child(child, [[vim.b.herdr_terminal_id ~= nil]])
 end
 
+T["terminal and history windows do not scroll past their content"] = function()
+    local pane = server.space("bounds").root_pane.pane_id
+    server.request("pane.send_text", { pane_id = pane, text = "seq 1 200\n" })
+    server.wait_output(pane, "200")
+    child.lua([[require("herdr.state").refresh()]])
+    child.lua([[require("herdr").open(...)]], { pane })
+    H.wait_child(child, ([[require("herdr.terminal").attached_panes()[%q] ~= nil]]):format(pane))
+    child.cmd("stopinsert")
+    -- The view ends at the last line, however far <C-e> scrolls.
+    local at_bottom = [[vim.fn.line("w0") == math.max(1, vim.fn.line("$") - vim.fn.winheight(0) + 1)]]
+    local function check(what)
+        -- 'wrap' (nothing wraps: lines fit) means no horizontal scrolling.
+        eq({ what, child.wo.wrap, child.wo.sidescrolloff }, { what, true, 0 })
+        -- G, then 50 <C-e>; WinScrolled fires on redraw (the child has no UI)
+        child.lua([[vim.cmd("normal! G50\5") vim.cmd("redraw")]])
+        H.wait_child(child, at_bottom)
+    end
+    check("live terminal")
+    child.lua([[require("herdr.history").open("")]])
+    H.wait_child(child, [[vim.b.herdr_history == true and vim.fn.search("^200$", "nw") > 0]])
+    check("history")
+end
+
 T["history follows the window width, without duplicates"] = function()
     local pane = server.space("widths").root_pane.pane_id
     child.lua([[require("herdr.state").refresh()]])
