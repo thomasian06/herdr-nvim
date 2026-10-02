@@ -240,12 +240,14 @@ Run `:checkhealth herdr` to check the current connection.
   or <C-s> sends it as one prompt (Herdr's agent.prompt; shells get the text
   plus Enter). <C-g> pastes it into the agent's input without sending; q
   closes and keeps the draft. Terminal buffers stay read-only.
-- Scrolling up (<C-u> <C-b> <PageUp> <C-y> k gg, mouse wheel) or searching
-  (/ ?) opens a local, cached copy of the terminal's history (colors kept)
-  where everything is native Neovim; i/a return to the live terminal and
-  type, q/<Esc> return to it. The first open loads the latest 1000 lines
-  (Herdr's per-read limit); while attached, the cache syncs in the
-  background and keeps everything since the terminal was opened.
+- In normal mode, scrolling up (<C-u> <C-b> <PageUp> <C-y> k gg, mouse
+  wheel) or searching (/ ?) opens a local, cached copy of the terminal's
+  history (colors kept) where everything is native Neovim; i/a return to the
+  live terminal and type, q/<Esc> return to it. The first open loads the
+  latest 1000 lines (Herdr's per-read limit); while attached, the cache syncs
+  in the background and keeps everything since the terminal was opened.
+  In terminal mode the mouse wheel is left to the terminal: Herdr scrolls its
+  own view, and full-screen apps that use the mouse get it.
 - <C-h/j/k/l> navigate windows from terminal mode (through vim-tmux-navigator
   or smart-splits.nvim when installed, so edges reach tmux panes). Set
   disable/remap them in `terminal.keys` if an agent needs those keys.
