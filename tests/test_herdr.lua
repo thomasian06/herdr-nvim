@@ -100,8 +100,8 @@ end
 
 T["history shows output that scrolled off the screen"] = function()
     local pane = server.space("epsilon").root_pane.pane_id
-    server.request("pane.send_text", { pane_id = pane, text = "seq 1 300\n" })
-    server.wait_output(pane, "300")
+    server.request("pane.send_text", { pane_id = pane, text = "seq 1 300; echo seq-done-$((40+2))\n" })
+    server.wait_output(pane, "seq-done-42") -- not in the echoed command, unlike "300"
     child.lua([[require("herdr.state").refresh()]])
     child.lua([[require("herdr").open(...)]], { pane })
     H.wait_child(child, ([[require("herdr.terminal").attached_panes()[%q] ~= nil]]):format(pane))
@@ -114,10 +114,28 @@ T["history shows output that scrolled off the screen"] = function()
     H.wait_child(child, [[vim.b.herdr_terminal_id ~= nil]])
 end
 
+T["the wheel opens history in normal mode, and is the app's in terminal mode"] = function()
+    local pane = server.space("wheel").root_pane.pane_id
+    child.lua([[require("herdr.state").refresh()]])
+    child.lua([[require("herdr").open(...)]], { pane })
+    H.wait_child(child, ([[require("herdr.terminal").attached_panes()[%q] ~= nil]]):format(pane))
+    -- Terminal mode: not mapped, so Neovim passes the wheel on (Herdr's attach
+    -- scrolls, or a full-screen app that uses the mouse gets it).
+    eq(child.lua_get([[vim.fn.maparg("<ScrollWheelUp>", "t")]]), "")
+    -- Output after the last refresh (the snapshot can still say "no
+    -- scrollback"); in normal mode the wheel opens the history all the same.
+    server.request("pane.send_text", { pane_id = pane, text = "seq 1 200; echo seq-done-$((40+2))\n" })
+    server.wait_output(pane, "seq-done-42") -- not in the echoed command, unlike "200"
+    child.cmd("stopinsert")
+    -- (The child has no UI to deliver mouse events: run the mapping itself.)
+    child.lua([[vim.fn.maparg("<ScrollWheelUp>", "n", false, true).callback()]])
+    H.wait_child(child, [[vim.b.herdr_history == true and vim.fn.search("^1$", "nw") > 0]])
+end
+
 T["terminal and history windows do not scroll past their content"] = function()
     local pane = server.space("bounds").root_pane.pane_id
-    server.request("pane.send_text", { pane_id = pane, text = "seq 1 200\n" })
-    server.wait_output(pane, "200")
+    server.request("pane.send_text", { pane_id = pane, text = "seq 1 200; echo seq-done-$((40+2))\n" })
+    server.wait_output(pane, "seq-done-42") -- not in the echoed command, unlike "200"
     child.lua([[require("herdr.state").refresh()]])
     child.lua([[require("herdr").open(...)]], { pane })
     H.wait_child(child, ([[require("herdr.terminal").attached_panes()[%q] ~= nil]]):format(pane))

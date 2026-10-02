@@ -184,17 +184,12 @@ function M.actions()
         nav_up = nav("up"),
         nav_right = nav("right"),
         history_wheel = {
-            mode = { "n", "t" },
+            -- Normal mode only: in terminal mode Neovim gives the wheel to apps
+            -- that use the mouse (vim, htop, full-screen agents) and otherwise
+            -- leaves terminal mode and scrolls, which lands here.
+            mode = "n",
             desc = "Herdr history (scroll up)",
             fn = function()
-                -- A full-screen app (alternate screen: vim, htop, ...) has no
-                -- scrollback to show; let it handle the wheel itself.
-                local pane = state.pane(vim.b.herdr_pane_id or "")
-                local scroll = pane and pane.scroll
-                if scroll and (scroll.max_offset_from_bottom or 0) == 0 then
-                    local key = vim.api.nvim_replace_termcodes("<ScrollWheelUp>", true, false, true)
-                    return vim.api.nvim_feedkeys(key, "n", false)
-                end
                 require("herdr.history").open(wheel_lines() .. "<C-y>")
             end,
         },
