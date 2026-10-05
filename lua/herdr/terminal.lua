@@ -271,6 +271,12 @@ function M.decorate(win)
         return
     end
     local wo = vim.wo[win][0]
+    -- Neovim's terminal window defaults (its TermOpen sets them, but only in
+    -- the window current at the time: a terminal started while hidden, e.g.
+    -- re-attached after a dropped connection, would inherit a code window's
+    -- 'list', which shows trailing spaces as "-", numbers and sign column).
+    wo.list, wo.number, wo.relativenumber = false, false, false
+    wo.signcolumn, wo.foldcolumn = "no", "0"
     -- Terminal lines are never wider than the window, so 'wrap' wraps nothing;
     -- it just stops horizontal scrolling (zl, trackpads, and the jump
     -- 'sidescrolloff' makes when normal mode puts the cursor near the edge).
@@ -312,7 +318,16 @@ end
 local function start(buf, pane, takeover)
     local terminal_id = pane.terminal_id
     local cmd, cleanup, env = transport.attach_cmd(terminal_id, takeover)
-    vim.api.nvim_buf_call(buf, function()
+    -- Start the job in a window showing the buffer, so TermOpen (Neovim's
+    -- terminal defaults: no 'list', numbers or sign column; and the user's own)
+    -- applies to that window rather than a temporary one.
+    local shown = vim.fn.win_findbuf(buf)[1]
+    local call = shown and function(fn)
+        vim.api.nvim_win_call(shown, fn)
+    end or function(fn)
+        vim.api.nvim_buf_call(buf, fn)
+    end
+    call(function()
         M.termopen(cmd, {
             env = env,
             on_exit = function(_, code)
