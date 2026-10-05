@@ -458,6 +458,28 @@ T["a restarted server is reconnected and terminals reattach"] = function()
     server.wait_output(pane, "back-42")
 end
 
+T["a terminal re-attached while hidden gets terminal window options when shown"] = function()
+    -- Global options as in LazyVim: 'list' would show trailing spaces as "-".
+    child.lua([[vim.o.list, vim.o.number, vim.o.relativenumber = true, true, true]])
+    local pane = server.space("tau").root_pane.pane_id
+    child.lua([[require("herdr").open(...)]], { pane })
+    H.wait_child(child, ([[require("herdr.terminal").attached_panes()[%q] ~= nil]]):format(pane))
+    child.cmd("stopinsert")
+    child.cmd("enew") -- the terminal is hidden when the connection drops
+
+    server.restart()
+    child.lua([[require("herdr.state").refresh()]]) -- next request notices the drop
+    H.wait_child(child, ([[require("herdr.terminal").attached_panes()[%q] ~= nil]]):format(pane), 20000)
+
+    -- Shown again in a window that had a regular buffer.
+    child.lua([[require("herdr").open(...)]], { pane })
+    H.wait_child(child, [[vim.b.herdr_terminal_id ~= nil]])
+    eq(
+        child.lua_get([[{ vim.wo.list, vim.wo.number, vim.wo.relativenumber, vim.wo.signcolumn, vim.wo.foldcolumn }]]),
+        { false, false, false, "no", "0" }
+    )
+end
+
 T["disconnect detaches everything"] = function()
     local pane = server.space("kappa").root_pane.pane_id
     child.lua([[require("herdr.state").refresh()]])
