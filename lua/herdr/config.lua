@@ -114,7 +114,7 @@ M.defaults = {
         --                              on <Esc> another key, see the README)
         --   nav_left/down/up/right (t) move to the neighboring window (through
         --                              vim-tmux-navigator / smart-splits.nvim)
-        --   history_wheel (n,t), history_half_page, history_page, history_line,
+        --   history_wheel (n), history_half_page, history_page, history_line,
         --   history_up, history_top, history_search, history_search_back (n)
         --                              open the cached history and scroll/search
         --   compose (n)                compose input (also global <leader>ai)

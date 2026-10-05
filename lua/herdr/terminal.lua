@@ -184,17 +184,12 @@ function M.actions()
         nav_up = nav("up"),
         nav_right = nav("right"),
         history_wheel = {
-            mode = { "n", "t" },
+            -- Normal mode only: in terminal mode Neovim gives the wheel to apps
+            -- that use the mouse (vim, htop, full-screen agents) and otherwise
+            -- leaves terminal mode and scrolls, which lands here.
+            mode = "n",
             desc = "Herdr history (scroll up)",
             fn = function()
-                -- A full-screen app (alternate screen: vim, htop, ...) has no
-                -- scrollback to show; let it handle the wheel itself.
-                local pane = state.pane(vim.b.herdr_pane_id or "")
-                local scroll = pane and pane.scroll
-                if scroll and (scroll.max_offset_from_bottom or 0) == 0 then
-                    local key = vim.api.nvim_replace_termcodes("<ScrollWheelUp>", true, false, true)
-                    return vim.api.nvim_feedkeys(key, "n", false)
-                end
                 require("herdr.history").open(wheel_lines() .. "<C-y>")
             end,
         },
@@ -272,9 +267,33 @@ end
 
 --- Per-window decorations for a herdr terminal window.
 function M.decorate(win)
-    if config.options.terminal.winbar and vim.api.nvim_win_is_valid(win) then
+    if not vim.api.nvim_win_is_valid(win) then
+        return
+    end
+    local wo = vim.wo[win][0]
+    -- Terminal lines are never wider than the window, so 'wrap' wraps nothing;
+    -- it just stops horizontal scrolling (zl, trackpads, and the jump
+    -- 'sidescrolloff' makes when normal mode puts the cursor near the edge).
+    wo.wrap, wo.sidescrolloff = true, 0
+    if config.options.terminal.winbar then
         require("herdr.style").define_highlights()
-        vim.wo[win][0].winbar = "%{%v:lua.require'herdr.terminal'.winbar()%}"
+        wo.winbar = "%{%v:lua.require'herdr.terminal'.winbar()%}"
+    end
+end
+
+--- Keep a herdr terminal or history window inside its buffer: Vim lets <C-e>
+--- and the mouse wheel scroll the last line up to the top, leaving blank rows.
+function M.clamp_scroll(win)
+    local buf = vim.api.nvim_win_get_buf(win)
+    if not (vim.b[buf].herdr_terminal_id or vim.b[buf].herdr_history) then
+        return
+    end
+    local info = vim.fn.getwininfo(win)[1] -- height: text rows, without the winbar
+    local last_top = math.max(1, vim.api.nvim_buf_line_count(buf) - info.height + 1)
+    if info.topline > last_top then
+        vim.api.nvim_win_call(win, function()
+            vim.fn.winrestview({ topline = last_top })
+        end)
     end
 end
 
@@ -656,6 +675,17 @@ local function remember_pane()
     end
 end
 vim.api.nvim_create_autocmd({ "BufEnter", "WinEnter" }, { group = term_group, callback = remember_pane })
+vim.api.nvim_create_autocmd("WinScrolled", {
+    group = term_group,
+    callback = function()
+        for id in pairs(vim.v.event) do
+            local win = tonumber(id) -- keys are window ids, plus "all"
+            if win and vim.api.nvim_win_is_valid(win) then
+                M.clamp_scroll(win)
+            end
+        end
+    end,
+})
 vim.api.nvim_create_autocmd("User", {
     group = term_group,
     pattern = "HerdrAttach",
