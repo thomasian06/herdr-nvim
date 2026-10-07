@@ -671,6 +671,7 @@ function M.open()
         wo.number, wo.relativenumber, wo.signcolumn = false, false, "no"
         wo.foldcolumn, wo.spell, wo.list, wo.wrap = "0", false, false, false
         wo.winfixwidth, wo.cursorline = true, true
+        wo.scrolloff = require("herdr.config").options.tree.scrolloff
         wo.statuscolumn = ""
     end
     vim.api.nvim_set_current_win(w)

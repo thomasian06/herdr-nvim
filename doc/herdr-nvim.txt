@@ -52,7 +52,7 @@ Options (defaults shown):                                     *herdr-options* >l
         connect = "<leader>ac", new_space = "<leader>an",
         compose = "<leader>ai" },
       tree = { width = nil, position = nil, icons = nil, indent = nil,
-        keys = { ... } },      -- see |herdr-keys|
+        scrolloff = 4, keys = { ... } }, -- see |herdr-keys|
       picker = { keys = { ... } },
       terminal = { auto_insert = true, winbar = true, keys = { ... } },
       history = { enabled = true, limit = 100000, keys = { ... } },
@@ -129,6 +129,9 @@ explorer or neo-tree when present.
 
 Herdr tabs are flattened: a tab with one pane shows as that terminal; a tab
 with split panes becomes a nested group.
+The tree uses native Neovim scrolling with its own four-line margin
+(tree.scrolloff = 4), independent of other buffers' cursor-centering settings.
+Set tree.scrolloff = 0 to let the cursor reach the window edges before scrolling.
 
   <CR> o          open terminal / toggle space
   l h             expand / collapse (or jump to parent)

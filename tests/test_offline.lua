@@ -58,6 +58,66 @@ T["tree starts disconnected"] = function()
     eq(tree_text():find("press C to connect", 1, true) ~= nil, true)
 end
 
+local function open_tall_tree(opts)
+    child.lua(
+        [[
+        require("herdr").setup(...)
+        local s = { workspaces = { { workspace_id = "w1", label = "scroll-test" } }, tabs = {}, panes = {} }
+        for i = 1, 100 do
+            s.tabs[i] = { workspace_id = "w1", tab_id = "t" .. i, label = "terminal " .. i }
+            s.panes[i] = { workspace_id = "w1", tab_id = "t" .. i, pane_id = "p" .. i }
+        end
+        require("herdr.state").snapshot = s
+    ]],
+        { opts or {} }
+    )
+    child.cmd("Herdr")
+end
+
+T["tree scrolling does not inherit a centered scroll margin"] = function()
+    child.lua([[vim.o.scrolloff = 999; _G.code_win = vim.api.nvim_get_current_win()]])
+    open_tall_tree()
+    local height = child.fn.winheight(0)
+    local target = math.floor(height * 3 / 4)
+    child.type_keys("gg", (target - 1) .. "j")
+    child.cmd("redraw")
+    eq({ child.fn.line("w0"), child.fn.winline() }, { 1, target })
+    eq(child.wo.scrolloff, 4)
+    eq(child.lua_get([[{ vim.go.scrolloff, vim.wo[_G.code_win].scrolloff }]]), { 999, 999 })
+
+    -- Live refreshes leave the cursor and viewport alone.
+    child.lua([[require("herdr.tree").render()]])
+    child.cmd("redraw")
+    eq({ child.fn.line("w0"), child.fn.winline() }, { 1, target })
+
+    -- Native movement starts scrolling at the four-line margin, not halfway.
+    child.type_keys("20j")
+    child.cmd("redraw")
+    local top = target + 20 - (height - 4) + 1
+    eq({ child.fn.line("w0"), child.fn.winline() }, { top, height - 4 })
+    child.lua([[require("herdr.tree").render()]])
+    child.cmd("redraw")
+    eq({ child.fn.line("w0"), child.fn.winline() }, { top, height - 4 })
+
+    child.type_keys("q")
+    eq(child.wo.scrolloff, 999)
+    child.cmd("Herdr")
+    eq(child.wo.scrolloff, 4)
+end
+
+T["tree scroll margin can be disabled"] = function()
+    child.o.scrolloff = 999
+    open_tall_tree({ tree = { scrolloff = 0 } })
+    eq(child.wo.scrolloff, 0)
+    local height = child.fn.winheight(0)
+    child.type_keys("gg", (height - 1) .. "j")
+    child.cmd("redraw")
+    eq({ child.fn.line("w0"), child.fn.winline() }, { 1, height })
+    child.type_keys("j")
+    child.cmd("redraw")
+    eq({ child.fn.line("w0"), child.fn.winline() }, { 2, height })
+end
+
 T["connecting without herdr shows a clear error"] = function()
     child.lua([[require("herdr").setup({ herdr_bin = "herdr-nvim-test-missing" })]])
     child.cmd("Herdr")

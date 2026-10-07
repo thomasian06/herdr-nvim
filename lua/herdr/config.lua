@@ -40,6 +40,7 @@ M.defaults = {
         position = nil, -- "left" | "right"
         icons = nil, -- e.g. { agent = "A ", shell = "$ " }
         indent = nil, -- e.g. { vertical = "| ", middle = "|-", last = "`-" }
+        scrolloff = 4, -- native scroll margin; do not inherit cursor-centering settings
         -- Keys in the tree: lhs = action (false disables a default). Actions:
         -- open, expand, collapse, vsplit, split, tab, takeover, open_all, add,
         -- add_space, rename, delete, move_up, move_down, focus, connect,

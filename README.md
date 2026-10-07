@@ -96,6 +96,7 @@ require("herdr").setup({
 
   tree = { -- unset look options are borrowed from your file explorer
     width = nil, position = nil, icons = nil, indent = nil,
+    scrolloff = 4, -- native scroll margin, independent of other buffers
     keys = {
       ["<CR>"] = "open", o = "open", ["<2-LeftMouse>"] = "open",
       l = "expand", h = "collapse",
@@ -218,6 +219,8 @@ Neovim 0.12+ also finds `.nvim.lua` in parent directories; 0.10 and 0.11 only lo
 ```
 
 Herdr tabs are flattened: a tab with a single pane shows as that terminal, and only a tab with split panes becomes a nested group.
+The tree uses normal Neovim scrolling with a four-line margin (`tree.scrolloff = 4`), rather than inheriting cursor-centering settings from other buffers.
+Set `tree.scrolloff = 0` to let the cursor reach the window edges before scrolling.
 
 | Key | |
 | --- | --- |
