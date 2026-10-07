@@ -44,7 +44,7 @@ M.defaults = {
         -- Keys in the tree: lhs = action (false disables a default). Actions:
         -- open, expand, collapse, vsplit, split, tab, takeover, open_all, add,
         -- add_space, rename, delete, move_up, move_down, focus, connect,
-        -- collapse_all, refresh, close, help.
+        -- collapse_all, refresh, scroll_down, scroll_up, close, help.
         keys = {
             ["<CR>"] = "open",
             ["o"] = "open",
@@ -71,6 +71,8 @@ M.defaults = {
             ["Z"] = "collapse_all",
             ["R"] = "refresh",
             ["u"] = "refresh",
+            ["<C-d>"] = "scroll_down",
+            ["<C-u>"] = "scroll_up",
             ["q"] = "close",
             ["?"] = "help",
             ["g?"] = "help",

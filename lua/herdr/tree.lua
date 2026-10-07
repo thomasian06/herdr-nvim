@@ -580,6 +580,9 @@ local ACTIONS = {
             require("herdr.connection").pick()
         end,
     },
+    -- Non-remapping RHS strings preserve native counts and bypass global `zz` mappings.
+    { "scroll_down", "scroll down half a page", "<C-d>" },
+    { "scroll_up", "scroll up half a page", "<C-u>" },
     { "collapse_all", "collapse all", actions.collapse_all },
     {
         "refresh",

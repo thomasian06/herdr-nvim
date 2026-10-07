@@ -118,6 +118,70 @@ T["tree scroll margin can be disabled"] = function()
     eq({ child.fn.line("w0"), child.fn.winline() }, { 2, height })
 end
 
+T["tree half-page scrolling ignores global recentering mappings"] = function()
+    child.lua([[
+        vim.keymap.set("n", "<C-d>", "<C-d>zz")
+        vim.keymap.set("n", "<C-u>", "<C-u>zz")
+    ]])
+    open_tall_tree()
+    local target = math.floor(child.fn.winheight(0) * 3 / 4)
+    child.type_keys("gg", (target - 1) .. "j")
+
+    -- Compare real keypresses, including counts, with Neovim's native motions.
+    for _, motion in ipairs({ { "<C-d>", "\4" }, { "<C-u>", "\21" }, { "5<C-d>", "5\4" }, { "7<C-u>", "7\21" } }) do
+        local expected = child.lua(
+            [[
+            local view, scroll = vim.fn.winsaveview(), vim.wo.scroll
+            vim.cmd("normal! " .. ...)
+            vim.cmd("redraw")
+            local result = { vim.fn.line("."), vim.fn.line("w0"), vim.fn.winline(), vim.wo.scroll }
+            vim.fn.winrestview(view)
+            vim.wo.scroll = scroll
+            return result
+        ]],
+            { motion[2] }
+        )
+        child.type_keys(motion[1])
+        child.cmd("redraw")
+        eq(child.lua_get([[{ vim.fn.line("."), vim.fn.line("w0"), vim.fn.winline(), vim.wo.scroll }]]), expected)
+    end
+
+    child.type_keys("q")
+    -- Only the tree overrides the user's mappings.
+    eq(child.fn.maparg("<C-d>", "n"):lower(), "<c-d>zz")
+    eq(child.fn.maparg("<C-u>", "n"):lower(), "<c-u>zz")
+    child.cmd("Herdr")
+    eq(child.fn.maparg("<C-d>", "n"):lower(), "<c-d>")
+    eq(child.fn.maparg("<C-u>", "n"):lower(), "<c-u>")
+end
+
+T["tree native scrolling keys can be remapped or disabled"] = function()
+    child.lua([[
+        vim.keymap.set("n", "<C-d>", "<C-d>zz")
+        vim.keymap.set("n", "<C-u>", "<C-u>zz")
+    ]])
+    open_tall_tree({
+        tree = {
+            keys = {
+                ["<C-d>"] = false,
+                ["<C-u>"] = false,
+                ["<PageDown>"] = "scroll_down",
+                ["<PageUp>"] = "scroll_up",
+            },
+        },
+    })
+    eq(child.fn.maparg("<C-d>", "n"):lower(), "<c-d>zz")
+    eq(child.fn.maparg("<C-u>", "n"):lower(), "<c-u>zz")
+    eq(child.fn.maparg("<PageDown>", "n"):lower(), "<c-d>")
+    eq(child.fn.maparg("<PageUp>", "n"):lower(), "<c-u>")
+    child.type_keys("?")
+    local help = table.concat(child.api.nvim_buf_get_lines(0, 0, -1, false), "\n")
+    eq(help:find("<PageDown>%s+scroll down half a page") ~= nil, true)
+    eq(help:find("<PageUp>%s+scroll up half a page") ~= nil, true)
+    eq(help:find("<C-d>", 1, true), nil)
+    eq(help:find("<C-u>", 1, true), nil)
+end
+
 T["connecting without herdr shows a clear error"] = function()
     child.lua([[require("herdr").setup({ herdr_bin = "herdr-nvim-test-missing" })]])
     child.cmd("Herdr")
