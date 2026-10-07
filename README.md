@@ -224,6 +224,8 @@ The tree uses normal Neovim scrolling with a four-line margin (`tree.scrolloff =
 Set `tree.scrolloff = 0` to let the cursor reach the window edges before scrolling.
 `<C-d>` and `<C-u>` use native half-page scrolling in the tree, even if your global mappings append `zz` to recenter the cursor.
 Other buffers keep your mappings unchanged.
+The selected tree row uses `HerdrTreeCursorLine` (linked to `Visual`) only while the tree has focus.
+Unfocused terminals have no cursor or cursor-line/column highlights competing with the tree selection.
 Disable these overrides with `tree.keys = { ["<C-d>"] = false, ["<C-u>"] = false }`.
 
 | Key | |

@@ -133,6 +133,7 @@ function M.define_highlights()
     set("HerdrShellIcon", "Comment")
     set("HerdrMuted", "Comment")
     set("HerdrAttached", "Special")
+    set("HerdrTreeCursorLine", "Visual")
     vim.api.nvim_set_hl(0, "HerdrFocused", { bold = true, default = true })
     -- A single-highlight variant for places that cannot layer (picker items).
     local normal = vim.api.nvim_get_hl(0, { name = "Normal", link = false })

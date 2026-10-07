@@ -87,6 +87,22 @@ T["a creates a terminal in the space and opens it"] = function()
     H.wait_child(child, [[vim.b.herdr_terminal_id ~= nil]])
 end
 
+T["unfocused terminals have no cursor-line or cursor-column highlight"] = function()
+    child.lua([[vim.o.cursorline, vim.o.cursorcolumn = true, true]])
+    local pane = server.space("cursor-focus").root_pane.pane_id
+    child.lua([[require("herdr").open(...)]], { pane })
+    H.wait_child(child, ([[require("herdr.terminal").attached_panes()[%q] ~= nil]]):format(pane))
+    child.lua([[_G.term_win = vim.api.nvim_get_current_win()]])
+    child.cmd("stopinsert")
+    child.cmd("Herdr")
+    eq(child.lua_get([[{ vim.wo[_G.term_win].cursorline, vim.wo[_G.term_win].cursorcolumn }]]), { false, false })
+    eq(child.wo.cursorline, true)
+    child.cmd("wincmd p")
+    H.wait_child(child, [[vim.b.herdr_terminal_id ~= nil]])
+    eq({ child.wo.cursorline, child.wo.cursorcolumn }, { false, false })
+    child.cmd("stopinsert")
+end
+
 T["typing in an attached terminal reaches the pane"] = function()
     local pane = server.space("delta").root_pane.pane_id
     child.lua([[require("herdr.state").refresh()]])

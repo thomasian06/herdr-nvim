@@ -182,6 +182,32 @@ T["tree native scrolling keys can be remapped or disabled"] = function()
     eq(help:find("<C-u>", 1, true), nil)
 end
 
+T["tree selection highlights only the focused window"] = function()
+    child.lua([[require("herdr").setup({})]])
+    child.cmd("Herdr")
+    child.lua([[_G.tree_win = vim.api.nvim_get_current_win()]])
+    local function selection_visible()
+        child.cmd("redraw")
+        return child.lua([[
+            local info = vim.fn.getwininfo(_G.tree_win)[1]
+            local row, col = info.winrow, info.wincol + info.width - 2
+            return vim.fn.screenattr(row, col) ~= vim.fn.screenattr(row + 1, col)
+        ]])
+    end
+    eq(child.wo.cursorline, true)
+    eq(child.wo.winhighlight:find("CursorLine:HerdrTreeCursorLine", 1, true) ~= nil, true)
+    eq(selection_visible(), true)
+    child.cmd("wincmd p")
+    eq(child.lua_get([[vim.wo[_G.tree_win].cursorline]]), false)
+    eq(selection_visible(), false)
+    child.cmd("wincmd p")
+    eq(child.wo.cursorline, true)
+    child.lua([[vim.api.nvim_exec_autocmds("FocusLost", {})]])
+    eq(child.wo.cursorline, false)
+    child.lua([[vim.api.nvim_exec_autocmds("FocusGained", {})]])
+    eq(child.wo.cursorline, true)
+end
+
 T["connecting without herdr shows a clear error"] = function()
     child.lua([[require("herdr").setup({ herdr_bin = "herdr-nvim-test-missing" })]])
     child.cmd("Herdr")
