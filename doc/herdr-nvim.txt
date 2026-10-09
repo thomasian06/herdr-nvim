@@ -52,7 +52,7 @@ Options (defaults shown):                                     *herdr-options* >l
         connect = "<leader>ac", new_space = "<leader>an",
         compose = "<leader>ai" },
       tree = { width = nil, position = nil, icons = nil, indent = nil,
-        keys = { ... } },      -- see |herdr-keys|
+        scrolloff = 4, keys = { ... } }, -- see |herdr-keys|
       picker = { keys = { ... } },
       terminal = { auto_insert = true, winbar = true, keys = { ... } },
       history = { enabled = true, limit = 100000, keys = { ... } },
@@ -68,7 +68,7 @@ keys merge with the defaults (full defaults in the README). Actions:
 
   tree      open expand collapse vsplit split tab takeover open_all add
             add_space rename delete move_up move_down focus connect
-            collapse_all refresh close help
+            collapse_all refresh scroll_down scroll_up close help
   picker    vsplit split tab focus
   terminal  normal_mode nav_left nav_down nav_up nav_right history_wheel
             history_half_page history_page history_line history_up
@@ -129,6 +129,14 @@ explorer or neo-tree when present.
 
 Herdr tabs are flattened: a tab with one pane shows as that terminal; a tab
 with split panes becomes a nested group.
+The tree uses native Neovim scrolling with its own four-line margin
+(tree.scrolloff = 4), independent of other buffers' cursor-centering settings.
+Set tree.scrolloff = 0 to let the cursor reach the window edges before scrolling.
+<C-d> and <C-u> use native half-page scrolling, bypassing global mappings
+that append zz to recenter the cursor; other buffers keep those mappings.
+The selected row uses HerdrTreeCursorLine (linked to Visual) only while focused.
+Unfocused terminals have no cursor or inherited cursor-line/column highlights.
+Disable the overrides with tree.keys = { ["<C-d>"] = false, ["<C-u>"] = false }.
 
   <CR> o          open terminal / toggle space
   l h             expand / collapse (or jump to parent)
@@ -149,6 +157,7 @@ with split panes becomes a nested group.
   C               connect to another server/profile
   z Z             collapse all
   R u             refresh
+  <C-d> <C-u>     native half-page scroll down / up (no forced recentering)
   q               close the tree
   ?               help
 

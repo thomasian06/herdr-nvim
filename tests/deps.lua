@@ -23,6 +23,16 @@ local function die(msg)
     os.exit(1)
 end
 
+-- Git hooks export repository-local variables that override `git -C`.
+-- Clear them in this process before touching any dependency repositories.
+local git_vars = vim.system({ "git", "rev-parse", "--local-env-vars" }, { text = true }):wait()
+if git_vars.code ~= 0 then
+    die("could not determine repository-local Git variables: " .. (git_vars.stderr or ""))
+end
+for name in (git_vars.stdout or ""):gmatch("[^\r\n]+") do
+    vim.env[name] = nil
+end
+
 local function run(cmd, opts)
     local res = vim.system(cmd, vim.tbl_extend("force", { text = true }, opts or {})):wait()
     if res.code ~= 0 then

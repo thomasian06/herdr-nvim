@@ -2,7 +2,7 @@
 --
 -- A key table maps lhs -> action name, `false` (disable a default), or
 -- { "action", mode = "n" | { ... } } to choose the modes. Actions are
--- { fn = function, mode = default mode(s), desc = string } or plain functions.
+-- { fn = function|string, mode = default mode(s), desc = string } or plain functions.
 
 local M = {}
 

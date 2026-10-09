@@ -96,6 +96,7 @@ require("herdr").setup({
 
   tree = { -- unset look options are borrowed from your file explorer
     width = nil, position = nil, icons = nil, indent = nil,
+    scrolloff = 4, -- native scroll margin, independent of other buffers
     keys = {
       ["<CR>"] = "open", o = "open", ["<2-LeftMouse>"] = "open",
       l = "expand", h = "collapse",
@@ -104,6 +105,7 @@ require("herdr").setup({
       a = "add", A = "add_space", r = "rename", d = "delete", K = "move_up", J = "move_down",
       f = "focus", C = "connect",
       z = "collapse_all", Z = "collapse_all", R = "refresh", u = "refresh",
+      ["<C-d>"] = "scroll_down", ["<C-u>"] = "scroll_up",
       q = "close", ["?"] = "help", ["g?"] = "help",
     },
   },
@@ -218,6 +220,13 @@ Neovim 0.12+ also finds `.nvim.lua` in parent directories; 0.10 and 0.11 only lo
 ```
 
 Herdr tabs are flattened: a tab with a single pane shows as that terminal, and only a tab with split panes becomes a nested group.
+The tree uses normal Neovim scrolling with a four-line margin (`tree.scrolloff = 4`), rather than inheriting cursor-centering settings from other buffers.
+Set `tree.scrolloff = 0` to let the cursor reach the window edges before scrolling.
+`<C-d>` and `<C-u>` use native half-page scrolling in the tree, even if your global mappings append `zz` to recenter the cursor.
+Other buffers keep your mappings unchanged.
+The selected tree row uses `HerdrTreeCursorLine` (linked to `Visual`) only while the tree has focus.
+Unfocused terminals have no cursor or cursor-line/column highlights competing with the tree selection.
+Disable these overrides with `tree.keys = { ["<C-d>"] = false, ["<C-u>"] = false }`.
 
 | Key | |
 | --- | --- |
@@ -235,6 +244,7 @@ Herdr tabs are flattened: a tab with a single pane shows as that terminal, and o
 | `C` | Connect to another server/profile |
 | `z` / `Z` | Collapse all |
 | `R` / `u` | Refresh |
+| `<C-d>` / `<C-u>` | Native half-page scroll down / up (no forced recentering) |
 | `q` | Close tree |
 | `?` | Help |
 

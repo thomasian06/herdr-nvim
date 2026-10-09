@@ -276,6 +276,9 @@ function M.decorate(win)
     -- re-attached after a dropped connection, would inherit a code window's
     -- 'list', which shows trailing spaces as "-", numbers and sign column).
     wo.list, wo.number, wo.relativenumber = false, false, false
+    -- Neovim hides the actual cursor in unfocused terminals. Do not leave
+    -- inherited line/column highlights behind as a competing focus indicator.
+    wo.cursorline, wo.cursorcolumn = false, false
     wo.signcolumn, wo.foldcolumn = "no", "0"
     -- Terminal lines are never wider than the window, so 'wrap' wraps nothing;
     -- it just stops horizontal scrolling (zl, trackpads, and the jump

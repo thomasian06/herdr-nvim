@@ -23,6 +23,7 @@ local line_nodes = {} ---@type table<integer, table> 1-based line -> node
 local node_lines = {} ---@type table<string, integer> node key -> line
 local collapsed = {} ---@type table<string, boolean> node key -> collapsed
 local pending_cursor_key ---@type string? move the cursor here once it appears
+local nvim_focused = true
 
 -- Model ---------------------------------------------------------------------
 
@@ -580,6 +581,9 @@ local ACTIONS = {
             require("herdr.connection").pick()
         end,
     },
+    -- Non-remapping RHS strings preserve native counts and bypass global `zz` mappings.
+    { "scroll_down", "scroll down half a page", "<C-d>" },
+    { "scroll_up", "scroll up half a page", "<C-u>" },
     { "collapse_all", "collapse all", actions.collapse_all },
     {
         "refresh",
@@ -671,9 +675,19 @@ function M.open()
         wo.number, wo.relativenumber, wo.signcolumn = false, false, "no"
         wo.foldcolumn, wo.spell, wo.list, wo.wrap = "0", false, false, false
         wo.winfixwidth, wo.cursorline = true, true
+        wo.cursorlineopt = "line"
+        wo.cursorcolumn = false
+        local highlights = vim.split(wo.winhighlight, ",", { trimempty = true })
+        highlights = vim.tbl_filter(function(hl)
+            return not hl:match("^CursorLine:")
+        end, highlights)
+        highlights[#highlights + 1] = "CursorLine:HerdrTreeCursorLine"
+        wo.winhighlight = table.concat(highlights, ",")
+        wo.scrolloff = require("herdr.config").options.tree.scrolloff
         wo.statuscolumn = ""
     end
     vim.api.nvim_set_current_win(w)
+    vim.wo[w].cursorline = nvim_focused
     state.start()
     render()
 end
@@ -701,6 +715,22 @@ state.on_change(function()
 end)
 
 local group = vim.api.nvim_create_augroup("herdr_tree", { clear = true })
+vim.api.nvim_create_autocmd("ColorScheme", { group = group, callback = style_mod.define_highlights })
+vim.api.nvim_create_autocmd({ "WinEnter", "WinLeave", "BufEnter", "BufLeave", "FocusGained", "FocusLost" }, {
+    group = group,
+    callback = function(ev)
+        if ev.event == "FocusGained" then
+            nvim_focused = true
+        elseif ev.event == "FocusLost" then
+            nvim_focused = false
+        end
+        local w = win()
+        if w then
+            local leaving = ev.event == "WinLeave" or ev.event == "BufLeave"
+            vim.wo[w].cursorline = nvim_focused and w == vim.api.nvim_get_current_win() and not leaving
+        end
+    end,
+})
 vim.api.nvim_create_autocmd("User", {
     group = group,
     pattern = { "HerdrAttach", "HerdrDetach" },
